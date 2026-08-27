@@ -20,7 +20,17 @@ services:
     runtime: python
     plan: free
     buildCommand: "pip install -r requirements.txt"
-    startCommand: "gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120"
+    # workers=1 is deliberate, not a typo: orders.py, trust.py's ledger, and
+    # the WhatsApp inbox all keep their live/in-progress state in a plain
+    # Python list in this process's memory rather than the database (only
+    # seeded historical data and signups/listings go through the DB). With
+    # more than one gunicorn worker, each is a separate OS process with its
+    # own copy of that memory -- an order placed on worker A is invisible to
+    # worker B, so a follow-up request (e.g. paying for that order) landing
+    # on B fails with "Order not found" even though the order really was
+    # created. One worker keeps every request on the same in-memory state;
+    # --threads 8 keeps plenty of concurrency for a demo's traffic level.
+    startCommand: "gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 120"
     envVars:
       - key: FLASK_ENV
         value: production
