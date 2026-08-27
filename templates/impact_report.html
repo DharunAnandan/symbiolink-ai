@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Impact Report — SymbioLink AI</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    color: #14181f; margin: 0; padding: 0; background: #eef0f2;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .page { max-width: 820px; margin: 32px auto; background: #ffffff; padding: 44px 52px; border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,0.08); }
+
+  .toolbar { max-width: 820px; margin: 0 auto 12px; display: flex; justify-content: flex-end; gap: 10px; }
+  .toolbar button, .toolbar a {
+    font-size: 13px; font-weight: 700; padding: 9px 16px; border-radius: 9px; cursor: pointer;
+    border: 1.5px solid #cfd4da; background: #ffffff; color: #14181f; text-decoration: none;
+  }
+  .toolbar .primary { background: #16a34a; border-color: transparent; color: #ffffff; }
+
+  .letterhead { display: flex; align-items: center; justify-content: space-between; padding-bottom: 18px; border-bottom: 2px solid #14181f; margin-bottom: 26px; }
+  .brand { display: flex; align-items: center; gap: 11px; }
+  .brand .mark {
+    width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+    background: linear-gradient(135deg, #34d399, #16a34a 55%, #22d3ee);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 13px; color: #ffffff;
+  }
+  .brand .name { font-weight: 800; font-size: 16px; letter-spacing: -0.01em; }
+  .brand .sub { font-size: 10.5px; color: #6b7280; font-weight: 600; }
+  .letterhead .meta { text-align: right; font-size: 11.5px; color: #6b7280; }
+  .letterhead .meta strong { display: block; color: #14181f; font-size: 13px; margin-bottom: 2px; }
+
+  .title-row { margin-bottom: 6px; }
+  .title-row h1 { margin: 0; font-size: 24px; letter-spacing: -0.01em; }
+  .title-row .subtitle { font-size: 13px; color: #6b7280; margin-top: 4px; }
+
+  .section-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: #9ca3af; font-weight: 700; margin: 28px 0 12px; }
+  .section-label:first-of-type { margin-top: 24px; }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 6px; }
+  .stat-box { background: #f7f8f9; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; }
+  .stat-box .num { font-size: 21px; font-weight: 800; color: #14181f; }
+  .stat-box .label { font-size: 11px; color: #6b7280; margin-top: 3px; }
+
+  .note { border-radius: 10px; padding: 12px 16px; font-size: 12.5px; margin: 18px 0; background: #dcf0e5; color: #166534; }
+
+  table.matches { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+  table.matches th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: #9ca3af; font-weight: 700; padding: 8px 0; border-bottom: 1.5px solid #14181f; }
+  table.matches td { padding: 10px 0; font-size: 12.5px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+  table.matches th:last-child, table.matches td:last-child { text-align: right; }
+  .match-path { font-weight: 700; color: #047857; }
+  .match-reason { color: #6b7280; font-size: 11px; margin-top: 3px; }
+  .badge-similar { display: inline-block; margin-left: 6px; padding: 2px 7px; border-radius: 999px; font-size: 9.5px; font-weight: 700; background: #cffafe; color: #0e7490; vertical-align: 1px; }
+
+  .footer { margin-top: 30px; padding-top: 14px; border-top: 1px solid #e5e7eb; font-size: 10.5px; color: #9ca3af; text-align: center; }
+
+  @media print {
+    body { background: #fff; }
+    .toolbar { display: none; }
+    .page { box-shadow: none; margin: 0; border-radius: 0; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="toolbar">
+    <a href="{{ url_for('dashboard') }}">&larr; Back to dashboard</a>
+    <button class="primary" onclick="window.print()">Print / Save as PDF</button>
+  </div>
+
+  <div class="page">
+    <div class="letterhead">
+      <div class="brand">
+        <div class="mark">SL</div>
+        <div>
+          <div class="name">SymbioLink AI</div>
+          <div class="sub">Industrial Symbiosis Network</div>
+        </div>
+      </div>
+      <div class="meta"><strong>Impact Report</strong>Generated {{ generated_at }}</div>
+    </div>
+
+    <div class="title-row">
+      <h1>Sustainability &amp; Impact Report</h1>
+      <div class="subtitle">A one-page summary of cluster-wide waste-to-resource activity{% if acting_as_unit %} and {{ acting_as_unit.name }}'s own contribution{% endif %}.</div>
+    </div>
+
+    <div class="section-label">Cluster-wide snapshot</div>
+    <div class="stat-grid">
+      <div class="stat-box"><div class="num">{{ stats.num_units }}</div><div class="label">Units in the network</div></div>
+      <div class="stat-box"><div class="num">{{ stats.num_listings }}</div><div class="label">Active listings</div></div>
+      <div class="stat-box"><div class="num">{{ "{:,.0f}".format(stats.total_waste_listed_kg) }} kg</div><div class="label">Waste material listed</div></div>
+      <div class="stat-box"><div class="num">{{ "{:,.1f}".format(stats.total_matched_co2_saved_kg) }} kg</div><div class="label">CO2e avoided (matched)</div></div>
+    </div>
+    <div class="stat-grid" style="margin-top: 14px;">
+      <div class="stat-box"><div class="num">{{ stats.num_matches }}</div><div class="label">Symbiosis matches found</div></div>
+      <div class="stat-box"><div class="num">{{ stats.num_pool_groups }}</div><div class="label">Low-volume pooling groups</div></div>
+      <div class="stat-box" style="grid-column: span 2;"><div class="num">Rs. {{ "{:,.0f}".format(stats.total_matched_saving_rs) }}</div><div class="label">Total cost saving vs. buying new material</div></div>
+    </div>
+
+    {% if acting_as_unit and my_stats %}
+    <div class="section-label">{{ acting_as_unit.name }}'s contribution</div>
+    <div class="stat-grid">
+      <div class="stat-box"><div class="num">{{ my_stats.total_orders }}</div><div class="label">Total orders</div></div>
+      <div class="stat-box"><div class="num">{{ my_stats.as_seller }} / {{ my_stats.as_buyer }}</div><div class="label">As seller / as buyer</div></div>
+      <div class="stat-box"><div class="num">{{ my_stats.completed }}</div><div class="label">Completed orders</div></div>
+      <div class="stat-box"><div class="num">{{ "{:,.1f}".format(my_stats.co2_saved_kg) }} kg</div><div class="label">CO2e avoided by this unit</div></div>
+    </div>
+    <div class="note">&#127793; This unit's order history contributed an estimated <strong>{{ "{:,.1f}".format(my_stats.co2_saved_kg) }}kg CO2e</strong> avoided by sourcing byproduct material instead of virgin material.</div>
+    {% endif %}
+
+    <div class="section-label">Top symbiosis opportunities</div>
+    <table class="matches">
+      <thead>
+        <tr><th>Chain</th><th>Materials</th><th>Saving</th></tr>
+      </thead>
+      <tbody>
+        {% for m in top_matches %}
+        <tr>
+          <td>
+            <div class="match-path">{{ m.path_names|join(' → ') }}{% if m.match_type == 'similar' %}<span class="badge-similar">Similar match</span>{% endif %}</div>
+            <div class="match-reason">{{ m.reason }}</div>
+          </td>
+          <td>{{ m.materials|join(', ')|replace('_', ' ') }}</td>
+          <td>Rs. {{ "{:,.0f}".format(m.total_saving_rs) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="footer">
+      Reference prices, distances, and CO2 factors are illustrative estimates, not live market data or a certified LCA.
+      &middot; SymbioLink AI
+    </div>
+  </div>
+
+</body>
+</html>

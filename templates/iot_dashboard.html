@@ -1,0 +1,122 @@
+{% extends "layout.html" %}
+{% block title %}IoT Bin Sensors — SymbioLink AI{% endblock %}
+{% set active = 'iot' %}
+{% block page_title %}IoT Bin Sensors{% endblock %}
+{% block page_subtitle %}Simulated ESP32 + load cell + ultrasonic bins &mdash; sensor-verified weight, listings created automatically.{% endblock %}
+{% block page_actions %}
+  <a href="{{ url_for('listings_page') }}" class="btn primary">Access &amp; Listing layer &rarr;</a>
+{% endblock %}
+
+{% block content %}
+
+{% if not acting_as_id and current_user.role != 'admin' %}
+<div class="empty-state">
+  <div class="empty-icon">📡</div>
+  <h3>Register your company to manage bin sensors</h3>
+  <p><a href="{{ url_for('register_unit') }}">Register your company</a> to register a sensor and simulate readings.</p>
+</div>
+{% else %}
+
+{% if acting_as_id %}
+<section>
+  <h2>Register a bin sensor</h2>
+  <div class="card-body">
+    <p class="muted">Provisions a simulated ESP32 device (load cell + ultrasonic sensor) for one material's waste bin. In a real deployment this is a one-time hardware install; here it's the software side of that same step.</p>
+    <form method="POST" action="{{ url_for('iot_register') }}" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
+      <div>
+        <label for="material">Material</label>
+        <input type="text" list="material-list" id="material" name="material" placeholder="e.g. metal_shavings" required style="margin:0;">
+        <datalist id="material-list">
+          {% for m in known_materials %}<option value="{{ m }}">{% endfor %}
+        </datalist>
+      </div>
+      <div>
+        <label for="capacity_kg">Bin capacity (kg)</label>
+        <input type="number" id="capacity_kg" name="capacity_kg" min="10" step="10" value="250" style="margin:0;width:120px;">
+      </div>
+      <div>
+        <label for="fill_threshold_pct">Auto-list threshold (%)</label>
+        <input type="number" id="fill_threshold_pct" name="fill_threshold_pct" min="10" max="100" step="5" value="80" style="margin:0;width:120px;">
+      </div>
+      <button type="submit">Register sensor</button>
+    </form>
+  </div>
+</section>
+{% endif %}
+
+<section>
+  <h2>{{ "Your bins" if acting_as_id else "All bins (admin view)" }}</h2>
+  <div class="card-body">
+    {% if sensor_rows %}
+    <div class="stat-grid cols-3" style="margin-bottom: 18px;">
+      {% set total_auto = sensor_rows|sum(attribute='sensor.listings_auto_created') %}
+      <div class="stat-card"><div class="val">{{ sensor_rows|length }}</div><div class="label">Bin sensors online</div></div>
+      <div class="stat-card"><div class="val">{{ total_auto }}</div><div class="label">Listings auto-created by sensors</div></div>
+      <div class="stat-card"><div class="val">{{ sensor_rows|map(attribute='sensor')|selectattr('last_fill_pct', 'ge', 80)|list|length }}</div><div class="label">Bins &ge;80% full right now</div></div>
+    </div>
+
+    <div class="grid-2col">
+      {% for row in sensor_rows %}
+      {% set s = row.sensor %}
+      {% set near = s.last_fill_pct >= (s.fill_threshold_pct - 15) and s.last_fill_pct < s.fill_threshold_pct %}
+      {% set over = s.last_fill_pct >= s.fill_threshold_pct %}
+      <div class="card bin-card">
+        <div class="bin-card-head">
+          <div>
+            <div style="font-weight:700;">{{ s.material.replace('_',' ')|capitalize }}</div>
+            <div class="bin-device-id">{{ s.device_id }} &middot; {{ row.unit_name }}</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:20px;font-weight:800;">{{ "%.0f"|format(s.last_fill_pct) }}%</div>
+            <div class="muted" style="font-size:11px;">full</div>
+          </div>
+        </div>
+
+        <div class="bin-fill-track">
+          <div class="bin-fill-level {{ 'bin-fill-over' if over else ('bin-fill-near' if near else '') }}" style="width: {{ s.last_fill_pct if s.last_fill_pct <= 100 else 100 }}%;"></div>
+          <div class="bin-threshold-mark" style="left: {{ s.fill_threshold_pct }}%;" title="Auto-list threshold: {{ s.fill_threshold_pct }}%"></div>
+        </div>
+
+        <div class="bin-stats-row">
+          <span>Load cell: <b>{{ "%.1f"|format(s.last_weight_kg) }}kg</b> / {{ s.capacity_kg|int }}kg</span>
+          <span>Threshold: <b>{{ s.fill_threshold_pct|int }}%</b></span>
+          <span>Auto-listed: <b>{{ s.listings_auto_created or 0 }}&times;</b></span>
+        </div>
+
+        {% if row.readings %}
+        <details>
+          <summary class="muted" style="cursor:pointer;font-size:12px;">Recent readings ({{ row.readings|length }})</summary>
+          <table style="margin-top:8px;">
+            <thead><tr><th>Time</th><th>Weight</th><th>Fill</th><th></th></tr></thead>
+            <tbody>
+            {% for r in row.readings %}
+            <tr>
+              <td class="muted" style="font-size:11.5px;">{{ r.created_at.strftime('%d %b, %H:%M') }}</td>
+              <td>{{ "%.1f"|format(r.weight_kg) }}kg</td>
+              <td>{{ "%.0f"|format(r.fill_pct) }}%</td>
+              <td>{% if r.triggered_listing %}<span class="ok-badge">auto-listed</span>{% endif %}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </details>
+        {% endif %}
+
+        <form method="POST" action="{{ url_for('iot_tick', sensor_id=s.id) }}">
+          <button type="submit" class="btn-inline">Simulate next reading &rarr;</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">📡</div>
+      <h3>No bin sensors registered yet</h3>
+      <p>Register one above to simulate an ESP32 + load cell + ultrasonic sensor automatically weighing and listing waste as the bin fills.</p>
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
+{% endblock %}

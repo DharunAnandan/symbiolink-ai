@@ -1,0 +1,134 @@
+{% extends "layout.html" %}
+{% block title %}SymbioLink AI — Dashboard{% endblock %}
+{% set active = 'dashboard' %}
+{% block page_title %}{{ t("Cluster Dashboard") }}{% endblock %}
+{% block page_subtitle %}{{ t("Overview of the demo industrial cluster. Explore each layer from the sidebar.") }}{% endblock %}
+{% block page_actions %}
+  <a href="{{ url_for('register_unit') }}" class="btn primary">{{ t("+ Register a listing") }}</a>
+  <a href="{{ url_for('search') }}" class="btn">{{ t("Search marketplace") }}</a>
+  <a href="{{ url_for('impact_report') }}" class="btn">{{ t("Download impact report") }}</a>
+{% endblock %}
+
+{% block content %}
+
+  <div class="card hero-thesis">
+    <span class="eyebrow"><span class="dot"></span>Live cluster snapshot</span>
+    <h1>{{ stats.num_units }} units are already turning each other&rsquo;s waste into raw material.</h1>
+    <span class="underline"></span>
+    <p>{{ stats.num_matches }} matches identified so far &mdash; an estimated &#8377;{{ "{:,.0f}".format(stats.total_matched_saving_rs) }} saved and {{ "{:,.0f}".format(stats.total_matched_co2_saved_kg) }}kg of CO2e avoided across the cluster.</p>
+  </div>
+
+  <div class="stat-grid cols-5">
+    <div class="stat-card"><div class="val" data-count="{{ stats.num_units }}">{{ stats.num_units }}</div><div class="label">{{ t("Units in cluster") }}</div></div>
+    <div class="stat-card"><div class="val" data-count="{{ stats.num_listings }}">{{ stats.num_listings }}</div><div class="label">{{ t("Active listings") }}</div></div>
+    <div class="stat-card"><div class="val" data-count="{{ stats.num_matches }}">{{ stats.num_matches }}</div><div class="label">{{ t("Matches found (incl. chains)") }}</div></div>
+    <div class="stat-card"><div class="val" data-count="{{ stats.total_matched_saving_rs|round|int }}" data-prefix="&#8377;">&#8377;{{ "{:,.0f}".format(stats.total_matched_saving_rs) }}</div><div class="label">{{ t("Total estimated savings") }}</div></div>
+    <div class="stat-card"><div class="val" data-count="{{ stats.total_matched_co2_saved_kg|round|int }}" data-prefix="&#127793; " data-suffix="kg">&#127793; {{ "{:,.0f}".format(stats.total_matched_co2_saved_kg) }}kg</div><div class="label">{{ t("CO2e avoided (est.)") }}</div></div>
+  </div>
+
+  <section>
+    <h2>{{ t("Top matches by estimated saving") }}</h2>
+    <div class="card-body">
+      <canvas id="savings-chart" height="90"></canvas>
+    </div>
+  </section>
+
+  <div class="section-label">{{ t("Explore each layer") }}</div>
+  <div class="unit-grid">
+    <a href="{{ url_for('listings_page') }}" class="unit-card">
+      <span class="cat-badge">Layer 1&ndash;2</span>
+      <div class="u-name">Access &amp; Listing</div>
+      <div class="u-meta">Simulated WhatsApp / voice-note intake</div>
+    </a>
+    <a href="{{ url_for('predictions_page') }}" class="unit-card">
+      <span class="cat-badge">Layer 3</span>
+      <div class="u-name">Predictive Layer</div>
+      <div class="u-meta">Forecasted upcoming waste listings</div>
+    </a>
+    <a href="{{ url_for('matches_page') }}" class="unit-card">
+      <span class="cat-badge">Layer 4</span>
+      <div class="u-name">Multi-Hop Matching</div>
+      <div class="u-meta">Direct matches &amp; 2&ndash;3 hop chains</div>
+    </a>
+    <a href="{{ url_for('pooling_page') }}" class="unit-card">
+      <span class="cat-badge">Layer 5</span>
+      <div class="u-name">Logistics Pooling</div>
+      <div class="u-meta">Shared transport for low-volume matches</div>
+    </a>
+    <a href="{{ url_for('trust_page') }}" class="unit-card">
+      <span class="cat-badge">Layer 6</span>
+      <div class="u-name">Verification &amp; Trust</div>
+      <div class="u-meta">Per-unit trust scores</div>
+    </a>
+    <a href="{{ url_for('units') }}" class="unit-card">
+      <span class="cat-badge">Directory</span>
+      <div class="u-name">All Units</div>
+      <div class="u-meta">Browse every unit in the cluster</div>
+    </a>
+  </div>
+
+  <div class="footer-note">
+    Reference prices and transport rates are illustrative estimates, not live market data &mdash; flagged honestly per the project's known limitations.
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+  const ctx = document.getElementById('savings-chart');
+  const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: {{ chart_labels|tojson }},
+      datasets: [{
+        label: 'Estimated saving (Rs.)',
+        data: {{ chart_values|tojson }},
+        backgroundColor: (ctx) => {
+          const g = ctx.chart.ctx.createLinearGradient(0, 0, ctx.chart.width, 0);
+          g.addColorStop(0, '#059669'); g.addColorStop(1, '#22d3ee');
+          return g;
+        },
+        hoverBackgroundColor: '#16a34a',
+        borderRadius: 5,
+        maxBarThickness: 26,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      // Each bar grows in with its own staggered delay instead of every bar
+      // animating in lockstep -- reads as the matches being "found" one
+      // after another rather than a single flat reveal.
+      animation: prefersReducedMotion ? false : {
+        duration: 900,
+        easing: 'easeOutQuart',
+        delay: (ctx) => ctx.type === 'data' ? ctx.dataIndex * 130 : 0,
+      },
+      // Extra headroom above the plotted bars so the tooltip (forced to
+      // always float above its bar via yAlign below) never has to get
+      // squeezed back down onto the bar it's describing, even for the very
+      // top row.
+      layout: { padding: { top: 30, right: 8 } },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(255,255,255,0.97)', borderColor: 'rgba(22,163,74,0.35)', borderWidth: 1,
+          padding: 10, cornerRadius: 8, titleColor: '#164e63', bodyColor: '#3b6577',
+          titleFont: { family: 'Plus Jakarta Sans' }, bodyFont: { family: 'Plus Jakarta Sans' },
+          callbacks: { label: (ctx) => 'Rs. ' + ctx.parsed.x.toLocaleString('en-IN') },
+          // Without this, Chart.js sometimes vertically centers the tooltip
+          // on the hovered bar instead of floating it above -- reported as
+          // "the values are coming over the bar". Pinning yAlign to
+          // 'bottom' always draws the box above the point (caret pointing
+          // down into the bar) with a real gap, never on top of it.
+          yAlign: 'bottom',
+          caretPadding: 8,
+        }
+      },
+      scales: {
+        x: { grid: { color: 'rgba(22,78,99,0.08)' }, ticks: { color: '#64748b', font: { family: 'Plus Jakarta Sans' } } },
+        y: { grid: { display: false }, ticks: { color: '#3b6577', font: { family: 'Plus Jakarta Sans', size: 12 } } }
+      }
+    }
+  });
+</script>
+{% endblock %}

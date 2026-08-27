@@ -1,0 +1,178 @@
+{% extends "layout.html" %}
+{% block title %}Admin Dashboard — SymbioLink AI{% endblock %}
+{% set active = 'admin' %}
+{% block page_title %}Admin Dashboard{% endblock %}
+{% block page_subtitle %}System-wide overview and management tools.{% endblock %}
+
+{% block content %}
+
+  <div class="stat-grid">
+    <div class="stat-card"><div class="val" data-count="{{ total_users }}">{{ total_users }}</div><div class="label">Total users</div></div>
+    <div class="stat-card"><div class="val" data-count="{{ total_units }}">{{ total_units }}</div><div class="label">Total units</div></div>
+    <div class="stat-card"><div class="val" data-count="{{ total_listings }}">{{ total_listings }}</div><div class="label">Active listings</div></div>
+    <div class="stat-card"><div class="val" data-count="{{ total_orders }}">{{ total_orders }}</div><div class="label">Total orders</div></div>
+    <div class="stat-card{% if open_disputes_count %} pulse-alert{% endif %}"><div class="val" data-count="{{ open_disputes_count }}">{{ open_disputes_count }}</div><div class="label">Open disputes</div></div>
+  </div>
+
+  <div class="section-label">Quick actions</div>
+  <div class="unit-grid" style="margin-bottom: 28px;">
+    <a href="{{ url_for('admin_disputes') }}" class="unit-card{% if open_disputes_count %} pulse-alert{% endif %}">
+      <span class="cat-badge">{% if open_disputes_count %}Needs review{% else %}Support{% endif %}</span>
+      <div class="u-name">Disputes{% if open_disputes_count %} ({{ open_disputes_count }}){% endif %}</div>
+      <div class="u-meta">Review buyer-raised issues and resolve refunds</div>
+    </a>
+    <a href="{{ url_for('admin_users') }}" class="unit-card">
+      <span class="cat-badge">Manage</span>
+      <div class="u-name">User Management</div>
+      <div class="u-meta">Manage user accounts and permissions</div>
+    </a>
+    <a href="{{ url_for('audit_logs') }}" class="unit-card">
+      <span class="cat-badge">Compliance</span>
+      <div class="u-name">Audit Logs</div>
+      <div class="u-meta">View system activity and compliance logs</div>
+    </a>
+    <a href="{{ url_for('units') }}" class="unit-card">
+      <span class="cat-badge">Directory</span>
+      <div class="u-name">Units Overview</div>
+      <div class="u-meta">View and manage industrial units</div>
+    </a>
+  </div>
+
+  <section>
+    <h2>Order reminders</h2>
+    <p class="muted" style="margin-top:-8px;">
+      Orders sitting more than 24 hours in a state where one side owes the next action
+      (payment, marking picked up, marking delivered) &mdash; this app has no background
+      scheduler, so nudges go out here, on demand.
+    </p>
+    <form method="POST" action="{{ url_for('admin_send_reminders') }}" style="display:flex; align-items:center; gap:14px;">
+      <button type="submit" class="btn primary">Send pending reminders{% if pending_reminders_count %} ({{ pending_reminders_count }}){% endif %}</button>
+      {% if not pending_reminders_count %}<span class="muted">Nothing is currently stalled.</span>{% endif %}
+    </form>
+  </section>
+
+  {% if unmet_supply or unmet_demand %}
+  <section>
+    <h2>Network gaps</h2>
+    <p class="muted" style="margin-top:-8px;">
+      Listings with no reachable match anywhere in the cluster &mdash; exactly who's worth recruiting
+      next to actually grow real waste diverted, not just polish the matches that already exist.
+    </p>
+    <div class="card-body" style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+      <div>
+        <h3 style="margin-top:0;">Unmet supply</h3>
+        {% if unmet_supply %}
+        <table>
+          <thead><tr><th>Unit</th><th>Material</th><th>Qty</th></tr></thead>
+          <tbody>
+          {% for row in unmet_supply %}
+          <tr>
+            <td>{{ row.unit_name }}</td>
+            <td>{{ row.material.replace('_',' ')|title }}</td>
+            <td class="nowrap">{{ row.qty_kg|int }} kg</td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="muted">Every waste listing has a reachable buyer.</p>
+        {% endif %}
+      </div>
+      <div>
+        <h3 style="margin-top:0;">Unmet demand</h3>
+        {% if unmet_demand %}
+        <table>
+          <thead><tr><th>Unit</th><th>Material</th><th>Qty</th></tr></thead>
+          <tbody>
+          {% for row in unmet_demand %}
+          <tr>
+            <td>{{ row.unit_name }}</td>
+            <td>{{ row.material.replace('_',' ')|title }}</td>
+            <td class="nowrap">{{ row.qty_kg|int }} kg</td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="muted">Every need listing has a reachable supplier.</p>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if concentrated_pairs %}
+  <section>
+    <h2>Trading concentration flags</h2>
+    <p class="muted" style="margin-top:-8px;">
+      Units whose completed exchanges are mostly with one repeat counterparty &mdash; a cheap,
+      rule-based check for ring-trading (two units trading only with each other to inflate trust),
+      not an accusation. Worth a manual look, not an automatic block.
+    </p>
+    <table>
+      <thead><tr><th>Unit</th><th>Mostly trades with</th><th>Shared / total exchanges</th><th>Concentration</th></tr></thead>
+      <tbody>
+      {% for row in concentrated_pairs %}
+      <tr>
+        <td>{{ row.unit_name }}</td>
+        <td>{{ row.partner_name }}</td>
+        <td class="nowrap">{{ row.shared_exchanges }} / {{ row.total_exchanges }}</td>
+        <td class="nowrap">{{ row.concentration_pct }}%</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  {% if at_risk_orders %}
+  <section>
+    <h2>At-risk orders</h2>
+    <p class="muted" style="margin-top:-8px;">Active orders the AI order-risk model scores as medium or high risk of falling through (cancelled or disputed), based on order size, distance between the units, and both sides' trust history &mdash; ranked riskiest first.</p>
+    <div class="card-body">
+      <table>
+        <thead><tr><th>Order</th><th>Material</th><th>Qty</th><th>Buyer</th><th>Seller</th><th>Status</th><th>Risk</th><th>Why</th></tr></thead>
+        <tbody>
+        {% for row in at_risk_orders %}
+        <tr>
+          <td class="nowrap">{{ row.order.id }}</td>
+          <td>{{ row.order.material.replace('_',' ')|title }}</td>
+          <td class="nowrap">{{ row.order.qty_kg|int }} kg</td>
+          <td>{{ row.order.buyer_name }}</td>
+          <td>{{ row.order.seller_name }}</td>
+          <td class="muted">{{ row.order.status|replace('_',' ')|title }}</td>
+          <td><span class="status-badge status-{{ 'warning' if row.risk_label == 'medium' else 'danger' }}">🤖 {{ row.risk_label|capitalize }} &middot; {{ (row.success_probability * 100)|round|int }}% success</span></td>
+          <td class="muted">{{ row.explanation or '—' }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  <section>
+    <h2>Recent WhatsApp messages</h2>
+    <div class="card-body">
+      {% if recent_messages %}
+      <table>
+        <thead><tr><th>Direction</th><th>Phone</th><th>Message</th><th>Status</th><th>Received</th></tr></thead>
+        <tbody>
+        {% for msg in recent_messages %}
+        <tr>
+          <td>{% if msg.direction == 'inbound' %}<span class="hop-badge">INBOUND</span>{% else %}<span class="cat-badge" style="margin-bottom:0;">OUTBOUND</span>{% endif %}</td>
+          <td class="nowrap">{{ msg.phone_number }}</td>
+          <td class="muted">{{ msg.message_body }}</td>
+          <td>{% if msg.processed %}<span class="ok-badge">Processed</span>{% else %}<span class="followup">Pending</span>{% endif %}</td>
+          <td class="muted nowrap">{{ msg.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="muted">No recent messages.</p>
+      {% endif %}
+    </div>
+  </section>
+
+{% endblock %}

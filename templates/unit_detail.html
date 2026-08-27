@@ -1,0 +1,141 @@
+{% extends "layout.html" %}
+{% block title %}{{ unit.name }} — SymbioLink AI{% endblock %}
+{% set active = 'units' %}
+{% block page_title %}{{ unit.name }}{% endblock %}
+{% block page_subtitle %}{{ unit.category|capitalize }} unit &middot; {{ unit.phone or "no phone on file" }}{% if unit.email %} &middot; {{ unit.email }}{% endif %}{% endblock %}
+{% block page_actions %}
+  {% if contact_link %}<a href="{{ contact_link }}" target="_blank" class="btn primary">Contact via WhatsApp</a>{% endif %}
+  <a href="{{ url_for('units') }}" class="btn">&larr; All units</a>
+{% endblock %}
+
+{% block content %}
+
+  <div class="stat-grid cols-3">
+    <div class="stat-card">
+      <div class="val">
+        {% if trust_score >= 4 %}<span class="trust-pill trust-good"><span class="trust-dot"></span>{{ trust_score }}</span>
+        {% elif trust_score >= 3 %}<span class="trust-pill trust-mid"><span class="trust-dot"></span>{{ trust_score }}</span>
+        {% else %}<span class="trust-pill trust-new"><span class="trust-dot"></span>{{ trust_score }}</span>{% endif %}
+        / 5
+      </div>
+      <div class="label">Trust score</div>
+    </div>
+    <div class="stat-card"><div class="val" data-count="{{ listings|length }}">{{ listings|length }}</div><div class="label">Active listings</div></div>
+    <div class="stat-card"><div class="val" data-count="{{ involved_matches|length }}">{{ involved_matches|length }}</div><div class="label">Matches involved in</div></div>
+  </div>
+
+  <section>
+    <h2>Listings</h2>
+    <div class="card-body">
+      {% if not is_me %}
+      <p class="muted">Viewing as a visitor. <a href="{{ url_for('act_as', next=request.path) }}">Act as {{ unit.name }}</a> to edit or remove these listings.</p>
+      {% endif %}
+      {% if listings %}
+      <table>
+        <thead><tr><th>Type</th><th>Material</th><th>Quantity</th><th><span class="sr-only">Actions</span></th></tr></thead>
+        <tbody>
+        {% for l in listings %}
+        <tr>
+          <td>{% if l.type == 'waste' %}<span class="ok-badge">WASTE</span>{% else %}<span class="hop-badge">NEED</span>{% endif %}</td>
+          <td>{{ l.material.replace('_',' ') }}</td>
+          <td>{{ l.qty_kg|int }}kg</td>
+          <td>
+            {% if is_me %}
+            <a href="{{ url_for('edit_listing', unit_id=unit.id, material=l.material, type=l.type) }}" class="btn btn-sm">Edit</a>
+            <form method="POST" action="{{ url_for('delete_listing', unit_id=unit.id, material=l.material) }}" class="inline-form" onsubmit="return confirm('Remove this listing?');">
+              <input type="hidden" name="type" value="{{ l.type }}">
+              <button type="submit" class="btn-sm btn-danger">Delete</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-icon">📦</div>
+        <h3>No listings yet</h3>
+        <p>{% if is_me %}Post what you have or need to start matching with the cluster.{% else %}This unit hasn't posted any listings yet.{% endif %}</p>
+        {% if is_me %}<a href="{{ url_for('register_unit') }}" class="btn primary">+ Register a listing</a>{% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section>
+    <h2>Order history</h2>
+    <div class="card-body">
+      {% if can_view_order_history %}
+        {% if unit_orders %}
+        <table>
+          <thead><tr><th>Order</th><th>Placed</th><th>Material</th><th>Qty</th><th>Role</th><th>Counterparty</th><th>Status</th></tr></thead>
+          <tbody>
+          {% for o in unit_orders %}
+          <tr>
+            <td class="muted">{{ o.id }}</td>
+            <td class="muted">{{ o.created_at }}</td>
+            <td>{{ o.material.replace('_',' ') }}</td>
+            <td>{{ o.qty_kg|int }}kg</td>
+            <td>{% if o.buyer_unit_id == unit.id %}Buyer{% else %}Seller{% endif %}</td>
+            <td>{% if o.buyer_unit_id == unit.id %}{{ o.seller_name }}{% else %}{{ o.buyer_name }}{% endif %}</td>
+            <td>
+              {% set stage_labels = {'placed': 'Placed', 'confirmed': 'Confirmed', 'picked_up': 'Picked up', 'delivered': 'Delivered', 'completed': 'Completed', 'cancelled': 'Cancelled'} %}
+              {% if o.status == 'completed' %}<span class="ok-badge">{{ stage_labels[o.status] }}</span>
+              {% elif o.status == 'cancelled' %}<span class="muted">{{ stage_labels[o.status] }}</span>
+              {% else %}<span class="hop-badge">{{ stage_labels[o.status] }}</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+          <div class="empty-icon">🧾</div>
+          <h3>No orders yet</h3>
+          <p>Orders placed with or by this unit will show up here.</p>
+        </div>
+        {% endif %}
+      {% else %}
+        {# Not this company and not an admin -- full line items (who traded
+           what with whom, in what quantity) are private to the two sides of
+           each order, same as the Orders page itself. Only an aggregate
+           reputation signal is shown here. #}
+        <div class="stat-grid">
+          <div class="stat-card"><div class="val" data-count="{{ order_summary.total }}">{{ order_summary.total }}</div><div class="label">Total orders</div></div>
+          <div class="stat-card"><div class="val" data-count="{{ order_summary.completed }}">{{ order_summary.completed }}</div><div class="label">Completed</div></div>
+          <div class="stat-card"><div class="val" data-count="{{ order_summary.in_progress }}">{{ order_summary.in_progress }}</div><div class="label">In progress</div></div>
+          <div class="stat-card"><div class="val" data-count="{{ order_summary.cancelled }}">{{ order_summary.cancelled }}</div><div class="label">Cancelled</div></div>
+        </div>
+        <p class="muted" style="margin-top:12px;">Order details (who, what, how much) are only visible to the two companies involved in each order, plus admins &mdash; same as the Orders page.</p>
+      {% endif %}
+    </div>
+  </section>
+
+  <section>
+    <h2>Matches involving this unit</h2>
+    <div class="card-body">
+      {% if involved_matches %}
+      <table>
+        <thead><tr><th>Chain</th><th>Hops</th><th>Est. saving</th></tr></thead>
+        <tbody>
+        {% for m in involved_matches %}
+        <tr>
+          <td class="chain">{{ m.path_names|join(' → ') }}</td>
+          <td><span class="hop-badge">{{ m.hops }}-hop</span></td>
+          <td>&#8377;{{ "{:,.0f}".format(m.total_saving_rs) }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-icon">🔗</div>
+        <h3>No matches yet</h3>
+        <p>This unit may be too far from a compatible listing, or none exists in the cluster yet.</p>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+{% endblock %}

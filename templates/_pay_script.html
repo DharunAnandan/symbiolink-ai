@@ -1,0 +1,385 @@
+<!-- Shared "review & pay" component, included wherever a Pay button appears
+     (order_new.html right after placing an order, orders.html for orders you're
+     the buyer on). Talks to /payment/create-order and /payment/verify in app.py.
+     Renders a clear order summary + cost breakdown before charging anything --
+     any caller just needs a button wired to payForOrder(orderId, buttonElement). -->
+<div id="paymentModalOverlay" class="payment-modal-overlay">
+  <div class="payment-modal" role="dialog" aria-modal="true" aria-labelledby="paymentModalTitle">
+    <button type="button" class="payment-modal-close" onclick="closePaymentModal()" aria-label="Close">&times;</button>
+
+    <div id="paymentModalLoading" class="payment-modal-state">
+      <div class="pm-spinner"></div>
+      <p class="pm-status-text">Preparing your order summary&hellip;</p>
+    </div>
+
+    <div id="paymentModalReview" class="payment-modal-state">
+      <div class="pm-header">
+        <div class="pm-header-icon">💳</div>
+        <div>
+          <h3 id="paymentModalTitle">Review &amp; pay</h3>
+          <div class="pm-order-id" id="pmOrderId"></div>
+        </div>
+      </div>
+
+      <div class="pm-parties">
+        <div class="pm-party">
+          <span class="pm-party-label">Buyer</span>
+          <span class="pm-party-name" id="pmBuyer"></span>
+        </div>
+        <div class="pm-arrow">&rarr;</div>
+        <div class="pm-party">
+          <span class="pm-party-label">Seller</span>
+          <span class="pm-party-name" id="pmSeller"></span>
+        </div>
+      </div>
+
+      <div class="pm-material-row">
+        <span class="pm-material-icon">🏭</span>
+        <div>
+          <div class="pm-material-name" id="pmMaterial"></div>
+          <div class="pm-material-qty" id="pmQty"></div>
+        </div>
+      </div>
+
+      <div class="pm-breakdown">
+        <div class="pm-line">
+          <span>Material cost</span>
+          <span id="pmMaterialCost"></span>
+        </div>
+        <div class="pm-line" id="pmLogisticsLine">
+          <span>Logistics</span>
+          <span id="pmLogisticsCost"></span>
+        </div>
+        <div class="pm-line pm-total">
+          <span>Total</span>
+          <span id="pmTotal"></span>
+        </div>
+      </div>
+
+      <button type="button" class="pm-pay-btn" id="pmPayBtn" onclick="confirmPayment()">
+        <span class="pm-lock">&#128274;</span> <span id="pmPayBtnLabel">Pay now</span>
+      </button>
+      <div class="pm-secure-note">Secured checkout &middot; <span id="pmGateway">Razorpay</span></div>
+    </div>
+
+    <div id="paymentModalProcessing" class="payment-modal-state">
+      <div class="pm-spinner"></div>
+      <p class="pm-status-text">Processing your payment&hellip;</p>
+    </div>
+
+    <div id="paymentModalSuccess" class="payment-modal-state">
+      <div class="pm-success-check">&#10003;</div>
+      <h3>Payment successful</h3>
+      <p class="pm-status-text" id="pmSuccessAmount"></p>
+      <button type="button" class="btn primary" id="pmDoneBtn" onclick="finishAndLeave()">Done</button>
+    </div>
+
+    <div id="paymentModalError" class="payment-modal-state">
+      <div class="pm-error-icon">&#9888;</div>
+      <h3>Payment couldn't be completed</h3>
+      <p class="pm-status-text" id="pmErrorMessage"></p>
+      <div class="pm-error-actions">
+        <button type="button" class="btn primary" onclick="retryPayment()">Try again</button>
+        <button type="button" class="btn" onclick="closePaymentModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .payment-modal-overlay {
+    display: none;
+    position: fixed; inset: 0; z-index: 1000;
+    background: rgba(6,8,10,0.72);
+    backdrop-filter: var(--blur);
+    -webkit-backdrop-filter: var(--blur);
+    align-items: center; justify-content: center;
+    padding: 20px;
+    animation: pm-fade-in var(--dur-fast) var(--ease-out) both;
+  }
+  .payment-modal-overlay.is-open { display: flex; }
+  @keyframes pm-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+  .payment-modal {
+    width: 100%; max-width: 400px;
+    background: var(--surface-solid);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    padding: 28px 26px 24px;
+    position: relative;
+    animation: pm-pop-in var(--dur-med) var(--ease-out-expo) both;
+  }
+  @keyframes pm-pop-in {
+    from { opacity: 0; transform: translateY(14px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .payment-modal-close {
+    position: absolute; top: 14px; right: 14px;
+    width: 30px; height: 30px; border-radius: 50%;
+    border: 1px solid var(--border); background: var(--surface);
+    color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all var(--dur-fast) var(--ease-out);
+  }
+  .payment-modal-close:hover { color: var(--ink); border-color: var(--border-strong); background: var(--surface-2); }
+
+  .payment-modal-state { display: none; flex-direction: column; align-items: center; text-align: center; }
+  .payment-modal-state.is-active { display: flex; }
+  #paymentModalReview.is-active { align-items: stretch; text-align: left; }
+
+  .pm-spinner {
+    width: 34px; height: 34px; border-radius: 50%;
+    border: 3px solid var(--border); border-top-color: var(--brand);
+    animation: pm-spin 0.8s linear infinite;
+    margin: 8px 0 16px;
+  }
+  @keyframes pm-spin { to { transform: rotate(360deg); } }
+  .pm-status-text { color: var(--ink-2); font-size: 13.5px; margin: 0 0 4px; }
+
+  .pm-header { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+  .pm-header-icon {
+    width: 42px; height: 42px; border-radius: var(--radius-md);
+    background: var(--brand-light); display: flex; align-items: center; justify-content: center;
+    font-size: 19px; flex-shrink: 0;
+  }
+  .pm-header h3 { margin: 0; font-size: 16px; font-family: 'Space Grotesk', sans-serif; color: var(--ink); }
+  .pm-order-id { font-size: 12px; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-top: 2px; }
+
+  .pm-parties {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);
+    padding: 12px 14px; margin-bottom: 12px;
+  }
+  .pm-party { flex: 1; min-width: 0; }
+  .pm-party-label { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 700; margin-bottom: 2px; }
+  .pm-party-name { display: block; font-size: 13px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pm-arrow { color: var(--brand-3); font-weight: 700; flex-shrink: 0; }
+
+  .pm-material-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px; margin-bottom: 16px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);
+  }
+  .pm-material-icon { font-size: 22px; flex-shrink: 0; }
+  .pm-material-name { font-weight: 700; font-size: 14px; color: var(--ink); }
+  .pm-material-qty { font-size: 12.5px; color: var(--muted); margin-top: 1px; }
+
+  .pm-breakdown {
+    border: 1px solid var(--border); border-radius: var(--radius-md);
+    padding: 14px 16px; margin-bottom: 18px; background: var(--surface-2);
+  }
+  .pm-line {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 13px; color: var(--ink-2); padding: 5px 0;
+  }
+  .pm-line span:last-child { font-family: 'JetBrains Mono', monospace; color: var(--ink); }
+  .pm-total {
+    margin-top: 6px; padding-top: 10px; border-top: 1px dashed var(--border-strong);
+    font-size: 15px; font-weight: 800; color: var(--ink);
+  }
+  .pm-total span:last-child { color: var(--brand-3); font-size: 17px; }
+
+  .pm-pay-btn {
+    width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
+    background: linear-gradient(120deg, var(--brand), var(--cyan)); color: #06120d;
+    border: none; padding: 13px 18px; border-radius: var(--radius-sm);
+    font-size: 14.5px; font-weight: 800; cursor: pointer;
+    transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+    font-family: inherit;
+  }
+  .pm-pay-btn:hover { transform: translateY(-1px); box-shadow: var(--glow-brand); }
+  .pm-pay-btn:disabled { opacity: 0.6; cursor: default; transform: none; box-shadow: none; }
+  .pm-lock { font-size: 13px; }
+  .pm-secure-note { text-align: center; font-size: 11px; color: var(--muted); margin-top: 10px; }
+
+  .pm-success-check {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: var(--good-bg); color: var(--good);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; font-weight: 800; margin-bottom: 14px;
+    animation: pm-pop-in var(--dur-med) var(--ease-spring) both;
+  }
+  #paymentModalSuccess h3 { margin: 0 0 6px; color: var(--good); font-family: 'Space Grotesk', sans-serif; font-size: 16px; }
+  #paymentModalSuccess .btn { margin-top: 14px; }
+
+  .pm-error-icon {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: var(--warn-bg); color: var(--warn);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px; margin-bottom: 14px;
+  }
+  #paymentModalError h3 { margin: 0 0 6px; color: var(--warn); font-family: 'Space Grotesk', sans-serif; font-size: 16px; }
+  .pm-error-actions { display: flex; gap: 10px; margin-top: 14px; }
+
+  @media (max-width: 480px) {
+    .payment-modal { padding: 24px 18px 20px; }
+  }
+</style>
+
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>
+(function () {
+  var pm = { orderId: null, rzpOrder: null, amountDetails: null, keyId: null, buttonEl: null };
+
+  function fmtRs(n) { return 'Rs. ' + Math.round(n || 0).toLocaleString('en-IN'); }
+  function titleCase(v) { return String(v || '').replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); }); }
+
+  function showState(id) {
+    document.querySelectorAll('.payment-modal-state').forEach(function (el) { el.classList.remove('is-active'); });
+    document.getElementById(id).classList.add('is-active');
+  }
+
+  window.payForOrder = function (orderId, buttonEl) {
+    pm.orderId = orderId;
+    pm.buttonEl = buttonEl || null;
+    if (pm.buttonEl) pm.buttonEl.disabled = true;
+
+    document.getElementById('paymentModalOverlay').classList.add('is-open');
+    document.body.style.overflow = 'hidden';
+    showState('paymentModalLoading');
+    fetchOrderAndOpen(orderId);
+  };
+
+  window.closePaymentModal = function () {
+    document.getElementById('paymentModalOverlay').classList.remove('is-open');
+    document.body.style.overflow = '';
+    if (pm.buttonEl) pm.buttonEl.disabled = false;
+  };
+
+  window.retryPayment = function () {
+    showState('paymentModalLoading');
+    fetchOrderAndOpen(pm.orderId);
+  };
+
+  window.finishAndLeave = function () {
+    // Always navigate to a fresh GET rather than window.location.reload(). This
+    // page may be the *result of a POST* (order_new.html renders the order
+    // confirmation as the response to placing the order) -- reload() on a
+    // POST-result document resubmits that POST, silently double-placing the
+    // order. Sending the browser to /orders sidesteps that entirely and is
+    // also just a better landing spot after paying.
+    window.location.href = '/orders';
+  };
+
+  function fetchOrderAndOpen(orderId) {
+    fetch('/payment/create-order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order_id: orderId })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.success) {
+          showErrorState(data.error || 'Could not start payment.');
+          return;
+        }
+        pm.rzpOrder = data.order;
+        pm.amountDetails = data.amount_details;
+        pm.keyId = data.key_id;
+        populateReview(data);
+        showState('paymentModalReview');
+      })
+      .catch(function () { showErrorState('Could not reach the server. Please try again.'); });
+  }
+
+  function populateReview(data) {
+    var s = data.order_summary || {};
+    var d = data.amount_details;
+
+    document.getElementById('pmOrderId').textContent = 'Order ' + data.order_id;
+    document.getElementById('pmBuyer').textContent = s.buyer_name || '';
+    document.getElementById('pmSeller').textContent = s.seller_name || '';
+    document.getElementById('pmMaterial').textContent = titleCase(s.material || '');
+    document.getElementById('pmQty').textContent = Math.round(s.qty_kg || 0) + ' kg';
+
+    document.getElementById('pmMaterialCost').textContent = fmtRs(d.material_cost);
+    var logisticsLine = document.getElementById('pmLogisticsLine');
+    if (d.logistics_cost) {
+      logisticsLine.style.display = 'flex';
+      document.getElementById('pmLogisticsCost').textContent = fmtRs(d.logistics_cost);
+    } else {
+      logisticsLine.style.display = 'none';
+    }
+    document.getElementById('pmTotal').textContent = fmtRs(d.total_amount);
+    document.getElementById('pmPayBtnLabel').textContent = 'Pay ' + fmtRs(d.total_amount);
+    document.getElementById('pmGateway').textContent = data.key_id ? 'Razorpay' : 'Simulated payment (demo mode)';
+  }
+
+  function showErrorState(msg) {
+    document.getElementById('pmErrorMessage').textContent = msg;
+    showState('paymentModalError');
+  }
+
+  window.confirmPayment = function () {
+    showState('paymentModalProcessing');
+
+    function finishPayment(paymentId, signature) {
+      fetch('/payment/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          razorpay_order_id: pm.rzpOrder.id,
+          razorpay_payment_id: paymentId,
+          razorpay_signature: signature
+        })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (v) {
+          if (v.success) {
+            document.getElementById('pmSuccessAmount').textContent =
+              fmtRs(pm.amountDetails.total_amount) + ' paid for Order ' + pm.orderId + '.';
+            showState('paymentModalSuccess');
+          } else {
+            showErrorState(v.error || 'Payment verification failed.');
+          }
+        })
+        .catch(function () {
+          showErrorState('Payment may have gone through, but we could not confirm it. Refresh to check your order status.');
+        });
+    }
+
+    if (!pm.keyId) {
+      // No live Razorpay keys configured yet -- payment_service.py runs in
+      // simulation mode. Skip the real Checkout popup and simulate a successful
+      // payment straight through /payment/verify, which also accepts any
+      // signature while running in that same simulation mode. The moment
+      // RAZORPAY_KEY_ID/SECRET are set in .env, this branch stops being taken
+      // and the real Checkout popup below runs instead.
+      window.setTimeout(function () {
+        finishPayment('pay_sim_' + Math.random().toString(36).slice(2, 10), 'simulated');
+      }, 500); // brief pause so "Processing…" is visibly real, not a flicker
+      return;
+    }
+
+    var rzp = new Razorpay({
+      key: pm.keyId,
+      amount: pm.rzpOrder.amount,
+      currency: pm.rzpOrder.currency,
+      name: 'SymbioLink AI',
+      description: 'Order ' + pm.orderId,
+      order_id: pm.rzpOrder.id,
+      handler: function (response) {
+        finishPayment(response.razorpay_payment_id, response.razorpay_signature);
+      },
+      modal: {
+        ondismiss: function () { showState('paymentModalReview'); }
+      },
+      theme: { color: '#2de8ac' }
+    });
+    rzp.open();
+  };
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      var overlay = document.getElementById('paymentModalOverlay');
+      if (overlay && overlay.classList.contains('is-open')) window.closePaymentModal();
+    }
+  });
+
+  document.getElementById('paymentModalOverlay').addEventListener('click', function (e) {
+    if (e.target === this) window.closePaymentModal();
+  });
+})();
+</script>

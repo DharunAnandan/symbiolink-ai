@@ -1,0 +1,79 @@
+{% extends "layout.html" %}
+{% block title %}Place an Order — SymbioLink AI{% endblock %}
+{% set active = 'search' %}
+{% block page_title %}Place an Order{% endblock %}
+{% block page_subtitle %}{{ seller.name }} &middot; {{ material.replace('_',' ') }} &middot; {{ available_qty|round(0)|int }}kg available{% endblock %}
+{% block page_actions %}
+  <a href="{{ url_for('search') }}" class="btn">&larr; Back to search</a>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-md">
+
+  {% if order %}
+  <div class="confirm">
+    <h3>&#10003; Order {{ order.id }} placed</h3>
+    <p>{{ order.buyer_name }} ordered {{ order.qty_kg|int }}kg of {{ order.material.replace('_',' ') }} from {{ order.seller_name }}.</p>
+    {% if order.get('co2_saved_kg') %}
+    <p>&#127793; Sourcing this instead of new material &mdash; and keeping it out of landfill &mdash; avoids an estimated <b>{{ "{:,.0f}".format(order.co2_saved_kg) }}kg CO2e</b>.</p>
+    {% endif %}
+    <p class="muted">Status: pending &mdash; mark it completed from the <a href="{{ url_for('orders_page') }}">Orders</a> page once the exchange actually happens, so both sides can rate each other.</p>
+
+    {# Payment isn't asked for yet -- {{ order.seller_name }} needs to accept
+       or decline this request first (see the Orders page's "placed" stage).
+       This used to jump straight into the Razorpay modal automatically on
+       page load, before the seller had even seen the order, which is
+       backwards: you shouldn't be asked to pay for something no one has
+       agreed to sell you yet. Once they accept, a "Pay now" button appears
+       on this same order in the Orders list. #}
+    <div class="payment-required-notice" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+      <span class="status-badge status-info">⏳ Awaiting {{ order.seller_name }}'s response</span>
+      <span class="muted">You'll be able to pay once they accept the order.</span>
+      <a href="{{ url_for('orders_page') }}" class="btn btn-secondary btn-sm">Track this order &rarr;</a>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if error %}
+  <div class="confirm confirm-error">
+    <h3>Couldn't place that order</h3>
+    <p>{{ error }}</p>
+  </div>
+  {% endif %}
+
+  {% if not buyer %}
+  <div class="empty">
+    You need to act as a company before placing an order.
+    <a href="{{ url_for('act_as', next=request.full_path) }}">Act as your company &rarr;</a>
+  </div>
+  {% elif available_qty > 0 %}
+  <div class="card">
+    <form method="POST">
+      <input type="hidden" name="unit_id" value="{{ seller.id }}">
+      <input type="hidden" name="material" value="{{ material }}">
+
+      <label>Ordering as</label>
+      <p class="muted">{{ buyer.name }} &middot; <a href="{{ url_for('act_as', next=request.full_path) }}">switch company</a></p>
+
+      <label for="qty_kg">Quantity to order (kg)</label>
+      <input type="number" id="qty_kg" name="qty_kg" min="1" max="{{ available_qty|int }}" step="1" required value="{{ available_qty|int }}">
+      <p class="muted">Up to {{ available_qty|int }}kg available &mdash; defaults to the full amount, lower it if you only need part of it.</p>
+
+      <button type="submit">Place order</button>
+    </form>
+  </div>
+  {% else %}
+  <div class="empty">This listing has no quantity left &mdash; someone else may have just ordered it all. <a href="{{ url_for('search') }}">Back to search</a>.</div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% include "_pay_script.html" %}
+{# The old auto-open-payment-modal script that used to live here has been
+   removed -- there's no payNowBtn on this page anymore (see the notice
+   above), and payment happens later from the Orders page once the seller
+   accepts. _pay_script.html is still included because orders.html's own
+   Pay-now button (rendered once status has moved past "placed") calls
+   payForOrder() from it. #}
+{% endblock %}

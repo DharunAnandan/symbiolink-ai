@@ -1,0 +1,98 @@
+{% extends "layout.html" %}
+{% block title %}Disputes — SymbioLink AI{% endblock %}
+{% set active = 'admin_disputes' %}
+{% block page_title %}Disputes{% endblock %}
+{% block page_subtitle %}Buyer-raised issues on paid orders, awaiting a refund or rejection decision.{% endblock %}
+
+{% block content %}
+
+  <section>
+    <h2>Open disputes ({{ open_disputes|length }})</h2>
+    <div class="card-body">
+      {% if open_disputes %}
+      <table>
+        <thead><tr><th>Order</th><th>Buyer &rarr; Seller</th><th>Material</th><th>Amount</th><th>Reason</th><th>Raised</th><th>Resolve</th></tr></thead>
+        <tbody>
+        {% for o in open_disputes %}
+        <tr>
+          <td class="cell-title">{{ o.id }}</td>
+          <td class="chain">{{ o.buyer_name }} &rarr; {{ o.seller_name }}</td>
+          <td class="muted">{{ o.material.replace('_',' ')|title }} &middot; {{ o.qty_kg|int }}kg</td>
+          <td class="price">{% if o.get('payment_amount') %}Rs.{{ o.payment_amount|int }}{% else %}&mdash;{% endif %}</td>
+          <td class="muted">{{ o.dispute_reason }}</td>
+          <td class="muted nowrap">{{ o.dispute_raised_at }} &middot; {{ o.dispute_raised_by }}</td>
+          <td class="nowrap">
+            <button type="button" class="btn-sm btn primary" onclick="resolveDispute('{{ o.id }}', 'refund')">Refund</button>
+            <button type="button" class="btn-sm btn btn-danger" onclick="resolveDispute('{{ o.id }}', 'reject')">Reject</button>
+          </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="muted">No open disputes &mdash; nothing needs review right now.</p>
+      {% endif %}
+    </div>
+  </section>
+
+  <section>
+    <h2>Resolved disputes</h2>
+    <div class="card-body">
+      {% if resolved_disputes %}
+      <table>
+        <thead><tr><th>Order</th><th>Buyer &rarr; Seller</th><th>Reason</th><th>Outcome</th><th>Notes</th><th>Resolved</th></tr></thead>
+        <tbody>
+        {% for o in resolved_disputes %}
+        <tr>
+          <td class="cell-title">{{ o.id }}</td>
+          <td class="chain">{{ o.buyer_name }} &rarr; {{ o.seller_name }}</td>
+          <td class="muted">{{ o.dispute_reason }}</td>
+          <td>
+            {% if o.dispute_status == 'resolved_refunded' %}
+            <span class="ok-badge">Refunded</span>
+            {% else %}
+            <span class="badge-critical">Rejected</span>
+            {% endif %}
+          </td>
+          <td class="muted">{{ o.get('dispute_resolution_notes', '') }}</td>
+          <td class="muted nowrap">{{ o.get('dispute_resolved_at', '') }} &middot; {{ o.get('dispute_resolved_by', '') }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="muted">No resolved disputes yet.</p>
+      {% endif %}
+    </div>
+  </section>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function resolveDispute(orderId, resolution) {
+  const label = resolution === 'refund' ? 'refund the buyer for' : 'reject';
+  if (!confirm(`Are you sure you want to ${label} order ${orderId}?`)) return;
+  const notes = prompt('Add a note for the record (optional):') || '';
+
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = `/admin/disputes/${orderId}/resolve`;
+
+  const resInput = document.createElement('input');
+  resInput.type = 'hidden';
+  resInput.name = 'resolution';
+  resInput.value = resolution;
+  form.appendChild(resInput);
+
+  const notesInput = document.createElement('input');
+  notesInput.type = 'hidden';
+  notesInput.name = 'notes';
+  notesInput.value = notes;
+  form.appendChild(notesInput);
+
+  document.body.appendChild(form);
+  form.submit();
+}
+</script>
+{% endblock %}

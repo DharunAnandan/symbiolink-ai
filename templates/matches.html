@@ -1,0 +1,205 @@
+{% extends "layout.html" %}
+{% block title %}Multi-Hop Matching — SymbioLink AI{% endblock %}
+{% set active = 'matches' %}
+{% block page_title %}Multi-Hop Matching Engine{% endblock %}
+{% block page_subtitle %}Layer 4 &middot; Direct matches and 2&ndash;3 hop chains, ranked by saving, distance, and trust.{% endblock %}
+{% block page_actions %}
+  <a href="{{ url_for('pooling_page') }}" class="btn primary">View pooling &rarr;</a>
+{% endblock %}
+
+{% block content %}
+<section>
+  <h2>Cluster network graph</h2>
+  <div class="card-body">
+    <p class="muted">Nodes are units (colored by category); edges are candidate matches, labeled by material and thicker for a bigger estimated saving. Faded nodes have no current match.</p>
+    <div class="legend">
+      <span class="legend-item"><span class="legend-dot legend-dot-metal"></span>Metal</span>
+      <span class="legend-item"><span class="legend-dot legend-dot-sugar"></span>Sugar</span>
+      <span class="legend-item"><span class="legend-dot legend-dot-paper"></span>Paper</span>
+      <span class="legend-item"><span class="legend-dot legend-dot-packaging"></span>Packaging</span>
+      <span class="legend-item"><span class="legend-dot legend-dot-textile"></span>Textile</span>
+      <span class="legend-item"><span class="legend-dot legend-dot-chemical"></span>Chemical</span>
+      <span class="legend-item"><span class="legend-dot legend-dot-food"></span>Food</span>
+      <span class="legend-item"><span class="legend-dot legend-dot-plastic"></span>Plastic</span>
+      <span class="legend-item"><span class="legend-dot legend-dot-wood"></span>Wood</span>
+      <span class="legend-item"><span class="legend-dot legend-dot-rubber"></span>Rubber</span>
+      <span class="legend-item"><span class="legend-dot legend-dot-leather"></span>Leather</span>
+      <span class="legend-item"><span class="legend-dot legend-dot-electronics"></span>Electronics</span>
+      <span class="legend-item"><span class="legend-dot legend-dot-glass"></span>Glass</span>
+      <span class="legend-item"><span class="legend-dot legend-dot-agro"></span>Agro</span>
+    </div>
+    <div id="network-graph" class="network-graph network-graph-loading" role="img" aria-label="Network graph of cluster units and candidate matches"></div>
+  </div>
+</section>
+
+<section>
+  <h2>Network-optimized plan
+    {% if network_plan.solver == 'ortools' %}<span class="status-badge status-info" title="Solved with Google OR-Tools' CP-SAT solver -- a constraint/integer optimization technique, the same class the logistics industry uses for load assignment">OR-Tools solved &middot; {{ network_plan.status }}</span>
+    {% elif network_plan.solver == 'heuristic_fallback' %}<span class="status-badge" title="ortools isn't installed in this environment -- falling back to the ranked list above, top 15, with no joint feasibility check">heuristic fallback</span>
+    {% elif network_plan.solver == 'ortools_infeasible_fallback' %}<span class="status-badge" title="The solver couldn't find a feasible solution in time -- falling back to the ranked list">solver fallback</span>
+    {% endif %}
+  </h2>
+  <div class="card-body">
+    <p class="muted">Instead of ranking each chain in isolation (below), this solves for the single best <b>non-overlapping</b> set of accepted exchanges across the whole cluster at once &mdash; maximizing total saving subject to every listing's real remaining quantity, so no listing gets double-promised to two different chains. Formulated as a weighted set-packing problem and solved with Google OR-Tools.</p>
+    {% if network_plan.accepted %}
+    <div class="stat-grid cols-3" style="margin-bottom: 16px;">
+      <div class="stat-card"><div class="val">{{ network_plan.accepted|length }} / {{ network_plan.candidates_considered }}</div><div class="label">Chains accepted into the plan</div></div>
+      <div class="stat-card"><div class="val">&#8377;{{ "{:,.0f}".format(network_plan.total_saving_rs) }}</div><div class="label">Total plan-wide saving</div></div>
+      <div class="stat-card"><div class="val">{{ "{:,.0f}".format(network_plan.total_co2_saved_kg) }}kg</div><div class="label">Total CO2e avoided by the plan</div></div>
+    </div>
+    <table>
+      <thead><tr><th>Chain</th><th>Hops</th><th>Est. saving</th><th>CO2e avoided</th></tr></thead>
+      <tbody>
+      {% for m in network_plan.accepted %}
+      <tr>
+        <td class="chain">{{ m.path_names|join(' → ') }}</td>
+        <td><span class="hop-badge">{{ m.hops }}-hop</span></td>
+        <td>&#8377;{{ "{:,.0f}".format(m.total_saving_rs) }}</td>
+        <td>&#127793; {{ "{:,.0f}".format(m.total_co2_saved_kg) }}kg</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">&#128202;</div>
+      <h3>No feasible plan yet</h3>
+      <p>Once there are candidate matches, the optimizer will select the best mutually-compatible set of them here.</p>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<section>
+  <h2>Ranked matches</h2>
+  <div class="card-body">
+    {% if matches %}
+    {% set max_score = (matches|map(attribute='score')|max) if matches else 1 %}
+    <table>
+      <thead><tr><th>Chain</th><th>Hops</th><th>Materials</th><th>Distance</th><th>Est. saving</th><th>CO2e avoided</th><th>Score</th></tr></thead>
+      <tbody>
+      {% for m in matches %}
+      <tr>
+        <td class="chain">
+          {{ m.path_names|join(' → ') }}
+          {% if m.match_type == 'similar' %}
+          <span class="status-badge status-info" title="Materials are worded differently but recognized as the same underlying material">Similar match</span>
+          {% endif %}
+          {% if accepted_ids and (m.path|join('->')) in accepted_ids %}
+          <span class="ok-badge" title="Selected into the OR-Tools network-optimized plan below">in optimized plan</span>
+          {% endif %}
+          <div class="muted match-reason">{{ m.reason }}</div>
+        </td>
+        <td><span class="hop-badge">{{ m.hops }}-hop</span></td>
+        <td class="muted">{{ m.materials|join(', ') }}</td>
+        <td class="nowrap">
+          {{ "%.1f"|format(m.edges|sum(attribute='distance_km')) }}km
+          {% if m.edges and m.edges[0].distance_source == 'google_maps' %}
+          <div class="muted">Google Maps</div>
+          {% else %}
+          <div class="muted">estimated</div>
+          {% endif %}
+        </td>
+        <td>&#8377;{{ "{:,.0f}".format(m.total_saving_rs) }}</td>
+        <td>&#127793; {{ "{:,.0f}".format(m.total_co2_saved_kg) }}kg</td>
+        <td>
+          <div class="score-cell">
+            <span class="score-num">{{ m.score }}</span>
+            <span class="score-bar"><span class="score-bar-fill" style="--score-pct: {{ ((m.score / max_score) * 100) if max_score else 0 }}%;"></span></span>
+            {% if m.score_method == 'ml' %}
+            <span class="status-badge status-info" title="Scored by a trained ranker (logistic regression over saving/distance/trust/similarity/hops) instead of the fixed 60/25/15 weighted formula -- see the reason below for its top learned factor">AI-ranked</span>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="muted" style="margin-top:10px;">Distances shown as &ldquo;estimated&rdquo; are straight-line (Euclidean) distances, used because no <span class="kbd">GOOGLE_MAPS_API_KEY</span> is configured for this deployment (see <span class="kbd">.env.example</span>) &mdash; the app already calls the Google Maps Distance Matrix API when a key is present, no code changes needed.</p>
+    <p class="muted">&ldquo;Similar match&rdquo; chains are found by the matching engine's semantic layer: materials with different names but a close enough textual/category match (e.g. &ldquo;metal dust&rdquo; and &ldquo;metal shavings&rdquo;) are surfaced as candidate opportunities the old exact-name-only matching would have missed entirely.</p>
+    <p class="muted"><span class="status-badge status-info" style="margin-right:6px;">AI-ranked</span>chains are scored by a trained model (logistic regression, learned from simulated accepted/declined outcomes) instead of a fixed hand-picked formula &mdash; each chain's reason line names the single learned factor driving its score. Falls back automatically to the original fixed-weight formula if the model hasn't been trained yet.</p>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">🔗</div>
+      <h3>No matches yet</h3>
+      <p>Once at least two complementary listings exist in the cluster, direct and multi-hop chains will be ranked here by saving, distance, and trust.</p>
+      <a href="{{ url_for('register_unit') }}" class="btn primary">+ Register a listing</a>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+<script>
+  // Building the graph is wrapped in try/catch on purpose: a single bad row (e.g. two
+  // units somehow sharing an id -- reproduced live once via a registration edge case)
+  // used to throw inside vis.DataSet() and silently abort this whole script, leaving
+  // the container an unexplained empty box with no on-page indication anything had
+  // gone wrong. Now a failure here still shows the rest of the page (legend, ranked
+  // matches table below) and tells you plainly what broke, instead of looking like a
+  // loading glitch.
+  try {
+    const nodes = new vis.DataSet({{ network_nodes|tojson }});
+    const edges = new vis.DataSet({{ network_edges|tojson }});
+    const container = document.getElementById('network-graph');
+    const data = { nodes, edges };
+    const options = {
+      nodes: { shape: 'dot', size: 16, borderWidth: 2, shadow: true },
+      edges: { smooth: { type: 'dynamic' }, shadow: false },
+      physics: { stabilization: true, barnesHut: { gravitationalConstant: -3200, springLength: 140 } },
+      interaction: { hover: true, tooltipDelay: 120 },
+    };
+    const network = new vis.Network(container, data, options);
+
+    // Fade/scale the whole canvas in only once physics has settled, instead of
+    // showing nodes mid-scramble while Barnes-Hut untangles the initial random
+    // layout -- one clean entrance instead of a jittery few hundred ms.
+    network.once('stabilizationIterationsDone', function () {
+      container.classList.remove('network-graph-loading');
+      container.classList.add('network-graph-ready');
+    });
+    // Belt-and-braces: on a huge/slow cluster stabilization can be skipped or
+    // take a while, so reveal unconditionally after a short ceiling too.
+    setTimeout(function () {
+      container.classList.remove('network-graph-loading');
+      container.classList.add('network-graph-ready');
+    }, 900);
+
+    // Hover-highlight: dim every node/edge not on the hovered unit's direct
+    // chain, so a busy cluster graph reads as "here's what this unit trades
+    // with" instead of a flat tangle. Restored on blur.
+    const baseNodeOpacity = {};
+    nodes.forEach(function (n) { baseNodeOpacity[n.id] = (n.opacity === undefined ? 1 : n.opacity); });
+    function setFocus(nodeId) {
+      if (nodeId === null) {
+        nodes.update(nodes.getIds().map(function (id) { return { id: id, opacity: baseNodeOpacity[id] }; }));
+        edges.update(edges.getIds().map(function (id) {
+          var e = edges.get(id);
+          return { id: id, color: { color: e.color && e.color.color ? e.color.color : '#5cd7a0', opacity: 0.55 } };
+        }));
+        return;
+      }
+      const connected = new Set(network.getConnectedNodes(nodeId));
+      connected.add(nodeId);
+      nodes.update(nodes.getIds().map(function (id) {
+        return { id: id, opacity: connected.has(id) ? 1 : 0.12 };
+      }));
+      edges.update(edges.getIds().map(function (id) {
+        var e = edges.get(id);
+        var onChain = e.from === nodeId || e.to === nodeId;
+        return { id: id, color: { color: e.color && e.color.color ? e.color.color : '#5cd7a0', opacity: onChain ? 0.95 : 0.06 } };
+      }));
+    }
+    network.on('hoverNode', function (params) { setFocus(params.node); });
+    network.on('blurNode', function () { setFocus(null); });
+  } catch (err) {
+    console.error('Cluster network graph failed to render:', err);
+    const container = document.getElementById('network-graph');
+    if (container) {
+      container.innerHTML = '<div class="empty" style="margin:0;">Couldn\'t draw the network graph (' +
+        (err && err.message ? err.message.replace(/</g, '&lt;') : 'unknown error') +
+        '). The ranked matches table below is unaffected.</div>';
+    }
+  }
+</script>
+{% endblock %}

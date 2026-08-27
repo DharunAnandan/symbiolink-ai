@@ -1,0 +1,112 @@
+{% extends "layout.html" %}
+{% block title %}Carbon Credits — SymbioLink AI{% endblock %}
+{% set active = 'carbon_credits' %}
+{% block page_title %}Carbon Credit Marketplace{% endblock %}
+{% block page_subtitle %}Turn verified CO2e savings into a tradeable revenue stream &mdash; 1 credit = 1 tCO2e avoided.{% endblock %}
+{% block page_actions %}
+  <a href="{{ url_for('brsr_report_page') }}" class="btn primary">View BRSR report &rarr;</a>
+{% endblock %}
+
+{% block content %}
+
+{% if not my_summary %}
+<div class="empty-state">
+  <div class="empty-icon">🌱</div>
+  <h3>Register your company to manage credits</h3>
+  <p><a href="{{ url_for('register_unit') }}">Register your company</a> to mint carbon credits from your own verified exchange history, or to buy credits listed by other units below.</p>
+</div>
+{% else %}
+<div class="stat-grid cols-3">
+  <div class="stat-card"><div class="val">{{ "%.0f"|format(my_summary.available_tco2e) }}</div><div class="label">Available tCO2e (unlisted)</div></div>
+  <div class="stat-card"><div class="val">{{ "%.0f"|format(my_summary.listed_tco2e) }}</div><div class="label">Listed for sale</div></div>
+  <div class="stat-card"><div class="val">&#8377;{{ "{:,.0f}".format(my_summary.revenue_rs) }}</div><div class="label">Revenue earned ({{ "%.0f"|format(my_summary.sold_tco2e) }} tCO2e sold)</div></div>
+</div>
+
+<section>
+  <h2>Mint new credits</h2>
+  <div class="card-body">
+    {% if my_summary.issuable_tco2e >= 1 %}
+    <p class="muted">{{ "%.0f"|format(my_summary.issuable_tco2e) }} tCO2e of newly-verified savings ready to mint into credit(s).</p>
+    <form method="POST" action="{{ url_for('carbon_credits_issue') }}">
+      <button type="submit">Mint {{ "%.0f"|format(my_summary.issuable_tco2e) }} tCO2e credit</button>
+    </form>
+    {% else %}
+    <p class="muted">{{ "%.0f"|format(my_summary.pending_kg_toward_next_tonne) }}kg CO2e accrued toward the next 1,000kg (1 tCO2e) threshold &mdash; keep completing verified exchanges to mint your next credit.</p>
+    {% endif %}
+  </div>
+</section>
+
+{% if my_credits %}
+<section>
+  <h2>Your credits</h2>
+  <div class="card-body">
+    <table>
+      <thead><tr><th>tCO2e</th><th>Status</th><th>Price / tonne</th><th></th></tr></thead>
+      <tbody>
+      {% for c in my_credits %}
+      <tr>
+        <td>{{ "%.0f"|format(c.tco2e) }}</td>
+        <td>
+          {% if c.status == 'available' %}<span class="muted">unlisted</span>
+          {% elif c.status == 'listed' %}<span class="ok-badge">listed</span>
+          {% else %}<span class="ok-badge" style="background:var(--brand-light);color:var(--brand)">sold &mdash; {{ c.buyer_name }}</span>{% endif %}
+        </td>
+        <td>{% if c.price_rs_per_tonne %}&#8377;{{ "{:,.0f}".format(c.price_rs_per_tonne) }}{% else %}&mdash;{% endif %}</td>
+        <td>
+          {% if c.status == 'available' %}
+          <form method="POST" action="{{ url_for('carbon_credits_list_route', credit_id=c.id) }}" style="display:flex;gap:6px;align-items:center;">
+            <input type="number" name="price_rs_per_tonne" min="1" step="1" value="{{ reference_price }}" style="width:110px;margin:0;">
+            <button type="submit" class="btn-inline">List for sale</button>
+          </form>
+          {% elif c.status == 'listed' %}
+          <form method="POST" action="{{ url_for('carbon_credits_unlist_route', credit_id=c.id) }}">
+            <button type="submit" class="btn-inline">Unlist</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endif %}
+
+<section>
+  <h2>Marketplace &mdash; credits listed by other units</h2>
+  <div class="card-body">
+    <p class="muted">Reference price ~&#8377;{{ "{:,.0f}".format(reference_price) }}/tCO2e (illustrative voluntary-market rate, not a live quote).</p>
+    {% if listings %}
+    <table>
+      <thead><tr><th>Seller</th><th>tCO2e</th><th>Price / tonne</th><th>Total</th><th></th></tr></thead>
+      <tbody>
+      {% for l in listings %}
+      <tr>
+        <td><a href="{{ url_for('unit_detail', unit_id=l.unit_id) }}" class="row-link">{{ l.unit_name }}</a></td>
+        <td>{{ "%.0f"|format(l.tco2e) }}</td>
+        <td>&#8377;{{ "{:,.0f}".format(l.price_rs_per_tonne) }}</td>
+        <td><b>&#8377;{{ "{:,.0f}".format(l.total_price_rs) }}</b></td>
+        <td>
+          <form method="POST" action="{{ url_for('carbon_credits_buy_route', credit_id=l.id) }}" style="display:flex;gap:6px;align-items:center;">
+            {% if not my_summary %}<input type="text" name="buyer_name" placeholder="Your company/organization" required style="width:170px;margin:0;">{% endif %}
+            <button type="submit" class="btn-inline">Buy</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">🌍</div>
+      <h3>No credits listed yet</h3>
+      <p>Once units mint and list carbon credits, they'll appear here for any buyer &mdash; on or off the platform &mdash; to purchase.</p>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<div class="note-block muted" style="font-size:12px;margin-top:18px;">{{ methodology_note }}</div>
+
+{% endblock %}

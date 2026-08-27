@@ -1,0 +1,50 @@
+{% extends "layout.html" %}
+{% block title %}Verification & Trust — SymbioLink AI{% endblock %}
+{% set active = 'trust' %}
+{% block page_title %}Verification &amp; Trust Layer{% endblock %}
+{% block page_subtitle %}Layer 6 &middot; Two-way ratings after each completed exchange, rolled up per unit.{% endblock %}
+{% block page_actions %}
+  <a href="{{ url_for('units') }}" class="btn primary">Units directory &rarr;</a>
+{% endblock %}
+
+{% block content %}
+
+{% set total_exchanges = trust_summary|sum(attribute='completed_exchanges') %}
+{% set avg_trust = (trust_summary|sum(attribute='trust_score') / trust_summary|length) if trust_summary else 0 %}
+{% set well_rated = trust_summary|selectattr('trust_score', 'ge', 4)|list|length %}
+<div class="stat-grid cols-3">
+  <div class="stat-card"><div class="val">{{ "%.1f"|format(avg_trust) }}<span style="font-size:14px;color:var(--muted)">/5</span></div><div class="label">Average trust score</div></div>
+  <div class="stat-card"><div class="val" data-count="{{ well_rated }}">{{ well_rated }}</div><div class="label">Highly trusted units (4+)</div></div>
+  <div class="stat-card"><div class="val" data-count="{{ total_exchanges }}">{{ total_exchanges }}</div><div class="label">Completed exchanges rated</div></div>
+</div>
+
+<section>
+  <h2>Trust scores</h2>
+  <div class="card-body">
+    {% if trust_summary %}
+    <table>
+      <thead><tr><th>Unit</th><th>Trust score</th><th>Completed exchanges</th></tr></thead>
+      <tbody>
+      {% for t in trust_summary|sort(attribute='trust_score', reverse=True) %}
+      <tr>
+        <td><a href="{{ url_for('unit_detail', unit_id=t.unit_id) }}" class="row-link">{{ t.name }}</a></td>
+        <td>
+          {% if t.trust_score >= 4 %}<span class="trust-pill trust-good"><span class="trust-dot"></span>{{ t.trust_score }}/5</span>
+          {% elif t.trust_score >= 3 %}<span class="trust-pill trust-mid"><span class="trust-dot"></span>{{ t.trust_score }}/5</span>
+          {% else %}<span class="trust-pill trust-new"><span class="trust-dot"></span>{{ t.trust_score }}/5</span>{% endif %}
+        </td>
+        <td class="muted">{{ t.completed_exchanges }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">⭐</div>
+      <h3>No ratings yet</h3>
+      <p>Trust scores appear here once units start rating each other after completed exchanges.</p>
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

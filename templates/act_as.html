@@ -1,0 +1,173 @@
+{% extends "layout.html" %}
+{% block title %}Act As — SymbioLink AI{% endblock %}
+{% block page_title %}Who are you?{% endblock %}
+{% block page_subtitle %}Pick your company so orders and listing edits know it's you.{% endblock %}
+
+{% block content %}
+<div class="max-w-sm">
+  <div class="card">
+    <form method="POST">
+      <input type="hidden" name="next" value="{{ request.args.get('next', '') }}">
+      <label id="unitComboLabelText" for="unitComboTrigger">Acting as</label>
+
+      {# Custom combobox, not a plain <select> -- a native select's dropdown
+         popup is drawn entirely by the browser/OS, so its size and position
+         (how close it sits to the taskbar, whether it has any margin at the
+         bottom of the screen) can't be styled from the page at all. This
+         version is our own markup, so combo.js below can measure the actual
+         viewport space and cap/flip the panel to always leave a margin
+         instead of running flush against the screen edge. #}
+      <div class="combo" id="unitCombo">
+        <button
+          type="button"
+          class="combo-trigger"
+          id="unitComboTrigger"
+          aria-haspopup="listbox"
+          aria-expanded="false"
+          aria-labelledby="unitComboLabelText unitComboLabel"
+        >
+          <span id="unitComboLabel">{{ current_unit_name or "Not signed in" }}</span>
+          <span class="combo-caret" aria-hidden="true">&#9662;</span>
+        </button>
+
+        {# The real form value -- kept in the DOM (just visually hidden, not
+           display:none-removed-from-flow-in-a-way-that-breaks-it) so the
+           POST body still has unit_id exactly like a plain select would. #}
+        <select id="unit_id" name="unit_id" required class="combo-native-select" tabindex="-1" aria-hidden="true">
+          <option value="">Not signed in</option>
+          {% for u in units %}<option value="{{ u.id }}" {% if current_unit_id and u.id == current_unit_id %}selected{% endif %}>{{ u.name }}</option>{% endfor %}
+        </select>
+
+        <div class="combo-panel" id="unitComboPanel" role="listbox" aria-labelledby="unitComboLabelText" hidden>
+          <div class="combo-option {% if not current_unit_id %}is-selected{% endif %}" data-value="" role="option" tabindex="-1">Not signed in</div>
+          {% for u in units %}
+          <div class="combo-option {% if current_unit_id and u.id == current_unit_id %}is-selected{% endif %}" data-value="{{ u.id }}" role="option" tabindex="-1">{{ u.name }}</div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <p class="muted">This is a lightweight demo stand-in for real login &mdash; it just remembers which company you are for this browser session, so listing edits and orders you make know it's you.</p>
+      <button type="submit">Save</button>
+    </form>
+  </div>
+</div>
+
+<script>
+(function () {
+  var wrap = document.getElementById("unitCombo");
+  if (!wrap) return;
+  var trigger = document.getElementById("unitComboTrigger");
+  var label = document.getElementById("unitComboLabel");
+  var panel = document.getElementById("unitComboPanel");
+  var nativeSelect = document.getElementById("unit_id");
+  var options = Array.prototype.slice.call(panel.querySelectorAll(".combo-option"));
+  var EDGE_MARGIN = 16; // keep this far clear of the viewport edge / taskbar, in either direction
+
+  function onOutsideClick(e) {
+    if (!wrap.contains(e.target)) closePanel();
+  }
+
+  function closePanel() {
+    if (panel.hidden) return;
+    panel.hidden = true;
+    trigger.setAttribute("aria-expanded", "false");
+    document.removeEventListener("click", onOutsideClick);
+    window.removeEventListener("resize", positionPanel);
+    window.removeEventListener("scroll", onWindowScroll, true);
+  }
+
+  function positionPanel() {
+    panel.style.maxHeight = "none";
+    panel.style.top = "";
+    panel.style.bottom = "";
+    panel.style.marginTop = "0";
+    panel.style.marginBottom = "0";
+    var triggerRect = trigger.getBoundingClientRect();
+    var viewportH = window.innerHeight;
+    var naturalHeight = panel.scrollHeight;
+    // GAP is the visible breathing room between the trigger button and the
+    // panel itself (set as an inline margin below, not left to a static CSS
+    // class rule) -- it has to come out of the same space budget as
+    // EDGE_MARGIN, otherwise the panel's edge ends up EDGE_MARGIN minus GAP
+    // away from the screen edge instead of a full EDGE_MARGIN away.
+    var GAP = 6;
+    var spaceBelow = viewportH - triggerRect.bottom - GAP - EDGE_MARGIN;
+    var spaceAbove = triggerRect.top - GAP - EDGE_MARGIN;
+
+    // Prefer opening downward as long as there's reasonably more (or equal)
+    // room there than above; otherwise flip up. Either way, cap the height
+    // to whatever room actually exists so the panel never runs past the
+    // edge of the screen -- this is the actual fix for the "list runs right
+    // up against the taskbar" issue.
+    if (spaceBelow >= Math.min(180, naturalHeight) || spaceBelow >= spaceAbove) {
+      panel.style.top = "100%";
+      panel.style.bottom = "auto";
+      panel.style.marginTop = GAP + "px";
+      panel.style.maxHeight = Math.max(120, Math.min(naturalHeight, spaceBelow)) + "px";
+    } else {
+      panel.style.bottom = "100%";
+      panel.style.top = "auto";
+      panel.style.marginBottom = GAP + "px";
+      panel.style.maxHeight = Math.max(120, Math.min(naturalHeight, spaceAbove)) + "px";
+    }
+  }
+
+  function onWindowScroll(e) {
+    // A capture-phase listener on window fires for scroll events from
+    // *any* scrollable element on the page, including the panel's own
+    // overflow-y:auto list -- scrolling through the company list is
+    // exactly the kind of scroll event this would otherwise catch. Without
+    // this guard, every wheel-tick while scrolling the list itself would
+    // call positionPanel(), which resets maxHeight to measure natural
+    // height and reassigns it -- thrashing the scrollable box's height and
+    // fighting the browser's own scroll-position handling, which is what
+    // made the list feel stuck / impossible to scroll down. Only reposition
+    // for scrolling that happens *outside* the panel (e.g. the page itself
+    // scrolling while the dropdown is open).
+    if (panel.contains(e.target)) return;
+    positionPanel();
+  }
+
+  function openPanel() {
+    // Un-hide *before* measuring/positioning -- panel.scrollHeight reads as
+    // 0 while [hidden] (display:none), which would throw off every height
+    // calculation in positionPanel() below.
+    panel.hidden = false;
+    positionPanel();
+    trigger.setAttribute("aria-expanded", "true");
+    var selected = panel.querySelector(".is-selected");
+    if (selected) selected.scrollIntoView({ block: "nearest" });
+    window.addEventListener("resize", positionPanel);
+    window.addEventListener("scroll", onWindowScroll, true);
+    setTimeout(function () { document.addEventListener("click", onOutsideClick); }, 0);
+  }
+
+  function selectOption(opt) {
+    nativeSelect.value = opt.getAttribute("data-value");
+    options.forEach(function (o) { o.classList.remove("is-selected"); });
+    opt.classList.add("is-selected");
+    label.textContent = opt.textContent;
+  }
+
+  trigger.addEventListener("click", function () {
+    if (panel.hidden) openPanel(); else closePanel();
+  });
+
+  trigger.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") { closePanel(); return; }
+    if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      if (panel.hidden) openPanel();
+    }
+  });
+
+  options.forEach(function (opt) {
+    opt.addEventListener("click", function () {
+      selectOption(opt);
+      closePanel();
+      trigger.focus();
+    });
+  });
+})();
+</script>
+{% endblock %}

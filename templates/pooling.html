@@ -1,0 +1,53 @@
+{% extends "layout.html" %}
+{% block title %}Logistics Pooling — SymbioLink AI{% endblock %}
+{% set active = 'pooling' %}
+{% block page_title %}Logistics Pooling Layer{% endblock %}
+{% block page_subtitle %}Layer 5 &middot; Grouping nearby low-volume matches into shared transport runs.{% endblock %}
+{% block page_actions %}
+  <a href="{{ url_for('trust_page') }}" class="btn primary">View trust layer &rarr;</a>
+{% endblock %}
+
+{% block content %}
+
+{% set pooled_count = pooling_results|selectattr('pooled')|list|length %}
+{% set viable_count = pooling_results|selectattr('made_viable_by_pooling')|list|length %}
+{% set extra_saving = (pooling_results|sum(attribute='net_saving_pooled_rs')) - (pooling_results|sum(attribute='net_saving_solo_rs')) %}
+<div class="stat-grid cols-3">
+  <div class="stat-card"><div class="val" data-count="{{ pooled_count }}">{{ pooled_count }}</div><div class="label">Matches pooled</div></div>
+  <div class="stat-card"><div class="val" data-count="{{ viable_count }}">{{ viable_count }}</div><div class="label">Made viable by pooling</div></div>
+  <div class="stat-card"><div class="val">&#8377;{{ "{:,.0f}".format(extra_saving) }}</div><div class="label">Extra saving from pooling</div></div>
+</div>
+
+<section>
+  <h2>Pooling comparison</h2>
+  <div class="card-body">
+    <p class="muted">Matches under {{ low_volume_threshold }}kg are grouped into shared transport runs where possible (pooled rate vs. solo rate).</p>
+    {% if pooling_results %}
+    <table>
+      <thead><tr><th>Match</th><th>Qty</th><th>Distance</th><th>Solo net saving</th><th>Pooled net saving</th><th><span class="sr-only">Pooling status</span></th></tr></thead>
+      <tbody>
+      {% for r in pooling_results %}
+      <tr>
+        <td>{{ r.from }} &rarr; {{ r.to }} <span class="muted">({{ r.material.replace('_',' ') }})</span></td>
+        <td>{{ r.qty_kg|int }}kg</td>
+        <td class="nowrap">{{ r.distance_km }}km <span class="muted">({{ 'Google Maps' if r.distance_source == 'google_maps' else 'estimated' }})</span></td>
+        <td>&#8377;{{ "{:,.0f}".format(r.net_saving_solo_rs) }}</td>
+        <td><b>&#8377;{{ "{:,.0f}".format(r.net_saving_pooled_rs) }}</b></td>
+        <td>
+          {% if r.pooled %}<span class="ok-badge">pooled</span>{% else %}<span class="muted">solo only</span>{% endif %}
+          {% if r.made_viable_by_pooling %}<span class="viable"> &mdash; made viable</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">🚚</div>
+      <h3>No pooling opportunities yet</h3>
+      <p>Once there are multiple low-volume matches near each other, they'll show up here grouped into shared transport runs.</p>
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

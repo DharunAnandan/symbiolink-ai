@@ -1,0 +1,54 @@
+{% extends "layout.html" %}
+{% block title %}Predictive Layer — SymbioLink AI{% endblock %}
+{% set active = 'predictions' %}
+{% block page_title %}Predictive Layer{% endblock %}
+{% block page_subtitle %}Layer 3 &middot; Forecasting each unit's next likely waste listing before it's posted.{% endblock %}
+{% block page_actions %}
+  <a href="{{ url_for('matches_page') }}" class="btn primary">View matches &rarr;</a>
+{% endblock %}
+
+{% block content %}
+
+{% set units_covered = forecasts|map(attribute='unit_name')|unique|list|length %}
+{% set materials_covered = forecasts|map(attribute='material')|unique|list|length %}
+<div class="stat-grid cols-3">
+  <div class="stat-card"><div class="val" data-count="{{ forecasts|length }}">{{ forecasts|length }}</div><div class="label">Forecasts generated</div></div>
+  <div class="stat-card"><div class="val" data-count="{{ units_covered }}">{{ units_covered }}</div><div class="label">Units covered</div></div>
+  <div class="stat-card"><div class="val" data-count="{{ materials_covered }}">{{ materials_covered }}</div><div class="label">Materials tracked</div></div>
+</div>
+
+<section>
+  <h2>Forecasted upcoming waste</h2>
+  <div class="card-body">
+    {% if forecasts %}
+    <table>
+      <thead><tr><th>Unit</th><th>Material</th><th>Avg. qty</th><th>Avg. interval</th><th>Predicted next listing</th><th>Method</th></tr></thead>
+      <tbody>
+      {% for f in forecasts %}
+      <tr>
+        <td>{{ f.unit_name }}</td>
+        <td>{{ f.material.replace('_',' ') }}</td>
+        <td>{{ f.avg_qty_kg|int }}kg</td>
+        <td>~{{ f.avg_interval_days }} days</td>
+        <td>{{ f.predicted_next_listing }}</td>
+        <td>
+          {% if f.forecast_method == 'ml' %}
+          <span class="status-badge status-info">AI model</span>
+          {% else %}
+          <span class="status-badge status-warning" title="Falls back to this when the trained model isn't available">moving avg</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">🔮</div>
+      <h3>Not enough history yet</h3>
+      <p>Once a unit has posted a few waste listings, the predictive layer starts learning its pattern and forecasting the next one here.</p>
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

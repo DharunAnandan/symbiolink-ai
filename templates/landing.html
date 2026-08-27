@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0a0c0f">
+<meta name="description" content="SymbioLink AI &mdash; a digital matching system that turns one MSME's waste into another nearby MSME's raw material, across an industrial cluster.">
+<title>SymbioLink AI &mdash; Turn waste into raw material</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<canvas id="bg-network" aria-hidden="true"></canvas>
+<div class="parallax-orbs" aria-hidden="true"><span></span><span></span><span></span></div>
+<a class="skip-link" href="#main-content">Skip to main content</a>
+
+{#
+  The site's public "what is this" page (see app.py::index()) -- previously
+  a signed-out visitor hit "/" and was bounced straight to a bare login
+  form with no explanation of what they were signing in to. This is a
+  standalone page (not extending layout.html/auth_layout.html) since it
+  needs a wide marketing layout neither of those shells was built for, but
+  it reuses the same design tokens, ambient canvas, and t()/language-toggle
+  system as the rest of the app.
+#}
+<main id="main-content" class="landing-page" tabindex="-1">
+
+  <header class="landing-topbar">
+    <div class="landing-brand">
+      <div class="mark">SL</div>
+      <div>
+        <div class="name">SymbioLink AI</div>
+        <div class="sub">Techno Bytes</div>
+      </div>
+    </div>
+    <div class="landing-topbar-actions">
+      <div class="lang-toggle" role="group" aria-label="Language">
+        {% for code in supported_langs %}
+        <a href="{{ url_for('set_language', lang=code) }}" class="{{ 'active' if current_lang == code else '' }}">{{ lang_labels[code] }}</a>
+        {% endfor %}
+      </div>
+      <a href="{{ url_for('login') }}" class="btn">{{ t("Sign in") }}</a>
+    </div>
+  </header>
+
+  <section class="landing-hero">
+    <span class="eyebrow"><span class="dot"></span>{{ t("AI-Powered Circular Economy Platform") }}</span>
+    <h1>{{ t("One MSME's waste is another's raw material.") }}</h1>
+    <p class="landing-lead">{{ t("SymbioLink AI finds the nearby business that needs exactly what your factory is throwing away — and matches it, automatically, across your whole industrial cluster.") }}</p>
+    <div class="landing-cta-row">
+      <a href="{{ url_for('register') }}" class="btn primary landing-cta">
+        {{ t("Get started") }}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+      </a>
+      <a href="#landing-features" class="btn landing-cta-secondary">{{ t("See how it works") }}</a>
+    </div>
+  </section>
+
+  <section class="landing-features" id="landing-features">
+    <div class="card landing-feature-card">
+      <span class="landing-feature-ic">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+      </span>
+      <h3>{{ t("Multi-hop matching") }}</h3>
+      <p>{{ t("Finds 2-3 step chains across the cluster, not just direct one-to-one matches.") }}</p>
+    </div>
+    <div class="card landing-feature-card">
+      <span class="landing-feature-ic">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><polyline points="9 12 11 14 15 10"></polyline></svg>
+      </span>
+      <h3>{{ t("Verified trust scores") }}</h3>
+      <p>{{ t("Every completed exchange is rated, so you know who has a real track record.") }}</p>
+    </div>
+    <div class="card landing-feature-card">
+      <span class="landing-feature-ic">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>
+      </span>
+      <h3>{{ t("Real cost & CO2e savings") }}</h3>
+      <p>{{ t("Every match shows the rupees saved and the emissions avoided versus buying new.") }}</p>
+    </div>
+    <div class="card landing-feature-card">
+      <span class="landing-feature-ic">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+      </span>
+      <h3>{{ t("Built for India's MSME clusters") }}</h3>
+      <p>{{ t("WhatsApp-based listing intake, low-volume logistics pooling, and a marketplace designed for how small manufacturers actually work.") }}</p>
+    </div>
+  </section>
+
+  <footer class="landing-footer">
+    SymbioLink AI &middot; Turning industrial waste into raw material, automatically
+  </footer>
+
+</main>
+
+<script src="{{ url_for('static', filename='motion.js') }}"></script>
+</body>
+</html>

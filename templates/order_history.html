@@ -1,0 +1,60 @@
+{% extends "layout.html" %}
+{% block title %}Order History — SymbioLink AI{% endblock %}
+{% set active = 'order_history' %}
+{% block page_title %}Order History{% endblock %}
+{% block page_subtitle %}Completed and cancelled orders &mdash; read-only, nothing left to action here.{% endblock %}
+{% block page_actions %}
+  <a href="{{ url_for('orders_page') }}" class="btn">&larr; Back to Orders</a>
+{% endblock %}
+
+{% block content %}
+{% set stage_labels = {'placed': 'Placed', 'confirmed': 'Confirmed', 'picked_up': 'Picked Up', 'delivered': 'Delivered', 'completed': 'Completed', 'cancelled': 'Cancelled'} %}
+{% set status_colors = {'placed': 'info', 'confirmed': 'primary', 'picked_up': 'warning', 'delivered': 'success', 'completed': 'success', 'cancelled': 'danger'} %}
+
+<section>
+  <div class="card-body">
+    {% if history_orders %}
+    <p class="muted">Past orders that have been completed or cancelled ({{ history_orders|length }}).</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Order ID</th>
+          <th>Material</th>
+          <th>Qty</th>
+          <th>Buyer</th>
+          <th>Seller</th>
+          <th>Status</th>
+          <th>CO2e</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for o in history_orders|sort(attribute='created_at', reverse=true) %}
+        <tr>
+          <td>{{ o.id }}</td>
+          <td>{{ o.material.replace('_',' ')|title }}</td>
+          <td>{{ o.qty_kg|int }} kg</td>
+          <td>{{ o.buyer_name }}</td>
+          <td>{{ o.seller_name }}</td>
+          <td>
+            <span class="status-badge status-{{ status_colors.get(o.status, 'info') }}">{{ stage_labels.get(o.status, o.status)|title }}</span>
+            {% if o.status == 'cancelled' and o.get('cancellation_reason') %}
+            <span class="muted" style="display:block;font-size:12px;">{{ o.cancellation_reason }}</span>
+            {% endif %}
+          </td>
+          <td>{% if o.get('co2_saved_kg') %}{{ "{:,.0f}".format(o.co2_saved_kg) }}kg{% else %}&mdash;{% endif %}</td>
+          <td><a href="{{ url_for('order_invoice', order_id=o.id) }}" target="_blank" class="btn btn-sm">🧾 Invoice</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">🗂️</div>
+      <h3>No past orders yet</h3>
+      <p>Completed and cancelled orders will show up here once you have some.</p>
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

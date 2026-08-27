@@ -1,0 +1,840 @@
+{% extends "layout.html" %}
+{% block title %}Orders — SymbioLink AI{% endblock %}
+{% set active = 'orders' %}
+{% block page_title %}Orders{% endblock %}
+{% block page_subtitle %}Track and manage all your orders with full lifecycle visibility.{% endblock %}
+{% block page_actions %}
+  <a href="{{ url_for('search') }}" class="btn primary">+ New Order</a>
+  <button onclick="toggleQuickActions()" class="btn">Quick Actions</button>
+  <button onclick="toggleView('list')" class="btn" id="listViewBtn">📋 List</button>
+  <button onclick="toggleView('grid')" class="btn" id="gridViewBtn">⊞ Grid</button>
+{% endblock %}
+
+{% block content %}
+<!-- Quick Actions Panel -->
+<div id="quickActionsPanel" class="panel" style="display: none;">
+  <div class="panel-header">
+    <h3>Quick Actions</h3>
+    <button onclick="toggleQuickActions()" class="panel-close">&times;</button>
+  </div>
+  <div class="quick-actions-grid">
+    <button onclick="bulkAdvance('placed')" class="quick-action-btn">
+      <span class="action-icon">✅</span>
+      <span class="action-label">Confirm All Placed</span>
+    </button>
+    <button onclick="bulkAdvance('confirmed')" class="quick-action-btn">
+      <span class="action-icon">🚚</span>
+      <span class="action-label">Mark All Picked Up</span>
+    </button>
+    <button onclick="exportOrders()" class="quick-action-btn">
+      <span class="action-icon">📊</span>
+      <span class="action-label">Export Orders</span>
+    </button>
+    <button onclick="showHelp()" class="quick-action-btn">
+      <span class="action-icon">❓</span>
+      <span class="action-label">Help & Shortcuts</span>
+    </button>
+  </div>
+</div>
+
+<!-- Help & Shortcuts Panel -- this used to be a native alert() fed a string of HTML
+     tags, which alert() just prints as literal text since it can't render markup
+     (that's the "<h3>Keyboard Shortcuts</h3>" text you'd see). A panel matching the
+     rest of the app renders it properly instead. -->
+<div id="helpPanel" class="panel" style="display: none;">
+  <div class="panel-header">
+    <h3>Help &amp; Shortcuts</h3>
+    <button onclick="toggleHelp()" class="panel-close">&times;</button>
+  </div>
+  <div class="help-grid">
+    <div class="help-section">
+      <h4>Keyboard shortcuts</h4>
+      <ul class="help-list">
+        <li><span class="kbd">Ctrl</span> + <span class="kbd">F</span> &mdash; focus search</li>
+        <li><span class="kbd">Esc</span> &mdash; close panels</li>
+        <li><span class="kbd">1</span>&ndash;<span class="kbd">4</span> &mdash; quick filters</li>
+      </ul>
+    </div>
+    <div class="help-section">
+      <h4>Quick tips</h4>
+      <ul class="help-list">
+        <li>Click a stat card to filter orders &mdash; it combines with the search box above</li>
+        <li>Double-click an order card to expand its details</li>
+        <li>Bulk actions for common operations live under Quick Actions</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- Search Bar -->
+<div class="search-bar-container">
+  <div class="search-bar">
+    <span class="search-icon">🔍</span>
+    <input type="text" id="globalSearch" placeholder="Search orders by ID, material, buyer, seller..." onkeyup="applyOrderFilters()">
+    <button onclick="clearSearch()" class="clear-search-btn" title="Clear search">✕</button>
+  </div>
+</div>
+
+<!-- Order Statistics -- these tiles ARE the status filter (click one to filter the list
+     below); there used to be a separate row of "All/Pending/Active/Completed" pill
+     buttons above this that filtered to the exact same four groups, plus a whole other
+     "Filter Orders" panel with its own status dropdown -- three controls all trying to
+     do the same status filtering, and since each wrote directly to order.style.display
+     independently, using more than one together silently discarded whatever the others
+     had set instead of combining. Consolidated down to just these tiles + the search
+     box above, combined through one applyOrderFilters() call so status + text search
+     actually AND together correctly. -->
+{% set needs_action_count = active_orders|selectattr('status', 'equalto', 'placed')|list|length + active_orders|selectattr('status', 'equalto', 'confirmed')|list|length %}
+<div class="order-stats cols-5">
+  <div class="order-stat-card stat-clickable active" data-filter="all" onclick="quickFilter('all')">
+    <div class="stat-number">{{ active_orders|length }}</div>
+    <div class="stat-label">Active Orders</div>
+    <div class="stat-trend">{{ active_orders|length }} in process</div>
+  </div>
+  <div class="order-stat-card stat-clickable{% if needs_action_count > 0 %} pulse-alert{% endif %}" data-filter="pending" onclick="quickFilter('pending')">
+    <div class="stat-number">{{ needs_action_count }}</div>
+    <div class="stat-label">Needs Action</div>
+    <div class="stat-trend">⚡ Click to filter</div>
+  </div>
+  <div class="order-stat-card stat-clickable" data-filter="active" onclick="quickFilter('active')">
+    <div class="stat-number">{{ active_orders|selectattr('status', 'equalto', 'picked_up')|list|length + active_orders|selectattr('status', 'equalto', 'delivered')|list|length }}</div>
+    <div class="stat-label">In Transit</div>
+    <div class="stat-trend">🚚 Active orders</div>
+  </div>
+  <div class="order-stat-card stat-clickable" data-filter="completed" onclick="location.href='{{ url_for('order_history_page') }}'" title="Go to Order History">
+    <div class="stat-number">{{ history_orders|selectattr('status', 'equalto', 'completed')|list|length }}</div>
+    <div class="stat-label">Completed</div>
+    <div class="stat-trend">✅ See Order History &rarr;</div>
+  </div>
+  <div class="order-stat-card">
+    <div class="stat-number">{{ "{:,.0f}".format(orders|rejectattr('status', 'equalto', 'cancelled')|sum(attribute='co2_saved_kg')) }}kg</div>
+    <div class="stat-label">CO2e Avoided</div>
+    <div class="stat-trend">🌱 Across all orders</div>
+  </div>
+</div>
+
+{% set stage_order = ['placed', 'confirmed', 'picked_up', 'delivered', 'completed'] %}
+{% set stage_labels = {'placed': 'Placed', 'confirmed': 'Confirmed', 'picked_up': 'Picked Up', 'delivered': 'Delivered', 'completed': 'Completed', 'cancelled': 'Cancelled'} %}
+{% set next_action = {'placed': 'Confirm order (seller)', 'confirmed': 'Mark picked up', 'picked_up': 'Mark delivered'} %}
+{% set status_colors = {'placed': 'info', 'confirmed': 'primary', 'picked_up': 'warning', 'delivered': 'success', 'completed': 'success', 'cancelled': 'danger'} %}
+
+<!-- Active orders -- anything still in progress. Completed/cancelled orders
+     move to the Order History section below instead of staying in this list
+     forever, so this view stays focused on what still needs attention. -->
+{% if active_orders %}
+<div class="orders-grid">
+{% for o in active_orders %}
+{# Who's viewing this specific card -- drives every accept/decline/cancel
+   control below. Accepting or advancing an order is always a seller action;
+   the buyer's only cancellation window is withdrawing their own still-
+   'placed' (not yet seller-confirmed) request -- see order_advance()/
+   order_cancel() in app.py, which enforce these same rules server-side so
+   these template checks are UI convenience, not the actual security
+   boundary. #}
+{% set is_seller = acting_as_unit and acting_as_unit.id == o.seller_unit_id %}
+{% set is_buyer = acting_as_unit and acting_as_unit.id == o.buyer_unit_id %}
+<div class="order-card" data-order-id="{{ o.id }}" data-status="{{ o.status }}" data-material="{{ o.material }}" data-search="{{ o.id }} {{ o.buyer_name }} {{ o.seller_name }} {{ o.material }}" data-order='{{ o|tojson }}'>
+  <div class="order-header">
+    <div class="order-id-section">
+      <h3>{{ o.id }}</h3>
+      <span class="status-badge status-{{ status_colors.get(o.status, 'info') }}">{{ stage_labels.get(o.status, o.status)|title }}</span>
+      {% if o.status != 'cancelled' %}
+        {% if o.get('payment_status') == 'paid' %}
+        <span class="status-badge status-success">✅ Paid</span>
+        {% elif o.get('payment_status') == 'refunded' %}
+        <span class="status-badge status-info">↩ Refunded</span>
+        {% else %}
+        <span class="status-badge status-warning">💳 Unpaid</span>
+        {% endif %}
+      {% endif %}
+      {% if o.get('dispute_status') == 'open' %}
+      <span class="status-badge status-danger">⚠ Dispute open</span>
+      {% elif o.get('dispute_status') == 'resolved_refunded' %}
+      <span class="status-badge status-info">Dispute: refunded</span>
+      {% elif o.get('dispute_status') == 'resolved_rejected' %}
+      <span class="status-badge status-info">Dispute: rejected</span>
+      {% endif %}
+      {# AI order-risk badge -- only the seller (whose delivery is on the line)
+         and admins see this; a buyer seeing "risk: medium" on their own order
+         would just read as the platform doubting them, with no action they
+         can take about it. Only shown for orders risk_by_order actually scored
+         (skipped if the order-risk model hasn't been trained yet). #}
+      {% if (is_seller or current_user.role == 'admin') and risk_by_order and risk_by_order.get(o.id) %}
+      {% set risk = risk_by_order[o.id] %}
+      <span class="status-badge status-{{ 'success' if risk.label == 'low' else ('warning' if risk.label == 'medium' else 'danger') }}"
+            title="AI order-risk model: {{ (risk.probability * 100)|round|int }}% predicted chance this order completes successfully, based on order size, distance, and both units' trust history">
+        🤖 {{ risk.label|capitalize }} risk
+      </span>
+      {% if risk.explanation %}
+      <span class="muted" style="display:block;font-size:12px;">{{ risk.explanation }}</span>
+      {% endif %}
+      {% endif %}
+    </div>
+    <div class="order-actions">
+      <button onclick="toggleOrderDetails('{{ o.id }}')" class="icon-btn" title="View Details">📋</button>
+      {% if is_seller and o.status in ['placed', 'confirmed'] %}
+      <button onclick="confirmCancelOrder('{{ o.id }}')" class="icon-btn danger" title="Decline / cancel this order">❌</button>
+      {% elif is_buyer and o.status == 'placed' %}
+      <button onclick="confirmCancelOrder('{{ o.id }}')" class="icon-btn danger" title="Withdraw your order request">❌</button>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="order-content">
+    <div class="order-main-info">
+      <div class="material-info">
+        <span class="material-icon">🏭</span>
+        <div>
+          <div class="material-name">{{ o.material.replace('_',' ')|title }}</div>
+          <div class="material-quantity">{{ o.qty_kg|int }} kg</div>
+        </div>
+      </div>
+      
+      <div class="parties-info">
+        <div class="party">
+          <span class="party-label">Buyer:</span>
+          <span class="party-name">{{ o.buyer_name }}</span>
+        </div>
+        <div class="arrow">→</div>
+        <div class="party">
+          <span class="party-label">Seller:</span>
+          <span class="party-name">{{ o.seller_name }}</span>
+        </div>
+      </div>
+      
+      <div class="order-meta-info">
+        <span class="meta-item">📅 {{ o.created_at }}</span>
+        {% if o.get('payment_amount') %}
+        <span class="meta-item">💰 Rs.{{ o.payment_amount|int }}</span>
+        {% endif %}
+        {% if o.get('co2_saved_kg') %}
+        <span class="meta-item">🌱 {{ "{:,.0f}".format(o.co2_saved_kg) }}kg CO2e</span>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if o.status != 'cancelled' %}
+    <!-- Order progress stepper -->
+    <div class="stepper" role="list" aria-label="Order progress">
+      {% for s in stage_order %}
+      {% set idx = stage_order.index(o.status) %}
+      {% set this_idx = stage_order.index(s) %}
+      {% set is_done = this_idx < idx or (o.status == 'completed' and this_idx <= idx) %}
+      {% set is_current = this_idx == idx %}
+      {# The timestamp each step actually happened is already sitting in o.history --
+         surface it as a hover tooltip instead of leaving it buried in the expandable
+         details section. #}
+      {% set stage_event = o.history|selectattr('status', 'equalto', s)|list|first %}
+      {# "Completed" isn't a plain status click like the earlier steps -- it only
+         happens once both sides submit a rating, so flag that while it's still ahead. #}
+      {% set needs_rating = s == 'completed' and not is_done %}
+      <div class="stepper-step" role="listitem">
+        <div class="stepper-node">
+          <div class="stepper-circle {% if is_done %}is-done{% elif is_current %}is-current{% endif %}"
+               {% if stage_event %}title="{{ stage_labels[s] }} &middot; {{ stage_event.at }}"
+               {% elif needs_rating %}title="Completing requires both sides to rate the exchange"
+               {% endif %}>
+            {% if is_done %}&#10003;{% else %}{{ this_idx + 1 }}{% endif %}
+            {% if needs_rating %}<span class="stepper-rating-hint" aria-hidden="true">&#9733;</span>{% endif %}
+          </div>
+          <div class="stepper-label {% if is_current %}is-current{% endif %}">{{ stage_labels[s] }}</div>
+        </div>
+        {% if not loop.last %}
+        <div class="stepper-connector {% if this_idx < idx %}is-done{% endif %}"></div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% if o.get('gps') and o.gps.leg not in ('done', None) %}
+    <div class="muted" style="font-size:12px;margin-top:6px;">&#128205; Simulated vehicle GPS: en route to {{ o.gps.target }} location.</div>
+    {% endif %}
+    {% if o.get('gps_verified_last_transition') %}
+    <span class="ok-badge" title="This status change was verified automatically by GPS geofencing entering the pickup/delivery zone, not a manual button tap">GPS-verified</span>
+    {% endif %}
+    {% endif %}
+
+    <!-- Action Buttons -->
+    <div class="order-actions-section">
+      {# Payment is only asked for once the seller has actually accepted the
+         order (status has moved past 'placed') -- asking the buyer to pay
+         for a request the seller hasn't even looked at yet, right alongside
+         the "Awaiting seller's response" notice below, was confusing and
+         premature. See the 'placed' branch below for the seller's
+         accept/decline step that has to happen first. #}
+      {% if o.status not in ('placed', 'cancelled') and o.get('payment_status') != 'paid' and is_buyer %}
+      <button type="button" class="btn primary" onclick="payForOrder('{{ o.id }}', this)">💳 Pay now</button>
+      {% endif %}
+      {% if o.get('payment_status') == 'paid' and acting_as_unit and acting_as_unit.id == o.buyer_unit_id %}
+        {% if o.get('dispute_status') == 'open' %}
+        <span class="muted">⚠ Dispute awaiting admin review</span>
+        {% elif not o.get('dispute_status') %}
+        <button type="button" class="btn btn-danger btn-sm" onclick="raiseDispute('{{ o.id }}')">Report a problem</button>
+        {% endif %}
+      {% endif %}
+      {% if o.status == 'placed' %}
+      {# The actual "accept or decline this order" moment -- deliberately NOT
+         gated on payment_status, and deliberately happening BEFORE the buyer
+         is asked to pay at all (see the "Pay now" button above, which only
+         appears once o.status has moved past 'placed'). Accepting/declining
+         is the seller's call on the order request itself; asking the buyer
+         to pay for a request the seller hasn't even responded to yet was
+         confusing, so payment now only becomes relevant once there's
+         something to actually pay for. Only the seller gets both buttons
+         here; the buyer sees a status line plus their own withdraw option,
+         mirrored from the header icon button above so it's reachable from
+         either spot. Both routes re-check who's allowed to act -- see
+         app.py. #}
+        {% if is_seller %}
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <form method="POST" action="{{ url_for('order_advance', order_id=o.id) }}" class="action-form">
+            <button type="submit" class="btn primary">✅ Accept order</button>
+          </form>
+          <button type="button" class="btn btn-danger" onclick="confirmCancelOrder('{{ o.id }}')">❌ Decline</button>
+        </div>
+        {% elif is_buyer %}
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <span class="status-badge status-info">⏳ Awaiting seller's response</span>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="confirmCancelOrder('{{ o.id }}')">Withdraw request</button>
+        </div>
+        {% endif %}
+
+      {% elif o.status == 'confirmed' and o.get('payment_status') != 'paid' %}
+        {# Fulfillment (marking it picked up) waits for payment -- the seller
+           accepted the order, but shouldn't hand material over until the
+           buyer has actually paid for it. See orders.py::advance_order. #}
+        {% if is_seller %}
+        <span class="muted">⏳ Waiting for the buyer to pay before this can be marked picked up.</span>
+        {% elif is_buyer %}
+        <span class="status-badge status-info">Accepted &mdash; pay above to move this order forward</span>
+        {% endif %}
+
+      {% elif o.status in next_action %}
+        {% if is_seller %}
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <form method="POST" action="{{ url_for('order_advance', order_id=o.id) }}" class="action-form">
+            <button type="submit" class="btn primary">{{ next_action[o.status] }} (manual) →</button>
+          </form>
+          <form method="POST" action="{{ url_for('order_gps_tick', order_id=o.id) }}" class="action-form">
+            <button type="submit" class="btn btn-sm" title="Advances the simulated vehicle toward the pickup/delivery geofence -- auto-completes this step once it arrives, no manual tap needed">&#128205; Simulate GPS movement</button>
+          </form>
+        </div>
+        {% else %}
+        <span class="muted">Waiting on the seller to {{ next_action[o.status]|lower }} (or the simulated GPS-tracked vehicle to arrive).</span>
+        {% endif %}
+
+      {% elif o.status == 'delivered' %}
+      <form method="POST" action="{{ url_for('order_complete', order_id=o.id) }}" class="rating-form-enhanced">
+        <div class="rating-section">
+          <div class="rating-group">
+            <label>Buyer rates seller:</label>
+            <div class="star-rating">
+              {% for i in [5,4,3,2,1] %}
+              <input type="radio" name="rating_buyer_to_seller" value="{{ i }}" id="buyer_{{ o.id }}_{{ i }}" {% if loop.first %}checked{% endif %}>
+              <label for="buyer_{{ o.id }}_{{ i }}" class="star">★</label>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="rating-group">
+            <label>Seller rates buyer:</label>
+            <div class="star-rating">
+              {% for i in [5,4,3,2,1] %}
+              <input type="radio" name="rating_seller_to_buyer" value="{{ i }}" id="seller_{{ o.id }}_{{ i }}" {% if loop.first %}checked{% endif %}>
+              <label for="seller_{{ o.id }}_{{ i }}" class="star">★</label>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+        <button type="submit" class="btn primary">Confirm Delivery & Rate</button>
+      </form>
+
+      {% elif o.status == 'completed' %}
+      <div class="completion-info">
+        <span class="completion-badge">✅ Completed</span>
+        <div class="ratings-display">
+          <span class="rating-item">Buyer→Seller: {{ o.rating_buyer_to_seller }}★</span>
+          <span class="rating-item">Seller→Buyer: {{ o.rating_seller_to_buyer }}★</span>
+        </div>
+      </div>
+
+      {% elif o.status == 'cancelled' %}
+      <div class="cancellation-info">
+        <span class="cancellation-badge">❌ Cancelled</span>
+        {% if o.get('cancellation_reason') %}
+        <span class="cancellation-reason">Reason: {{ o.cancellation_reason }}</span>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Expandable Details -->
+  <div id="details_{{ o.id }}" class="order-details" style="display: none;">
+    <div class="details-content">
+      <h4>Order Details</h4>
+      <div class="details-grid">
+        <div class="detail-item">
+          <span class="detail-label">Order ID:</span>
+          <span class="detail-value">{{ o.id }}</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Material:</span>
+          <span class="detail-value">{{ o.material.replace('_', ' ')|title }}</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Quantity:</span>
+          <span class="detail-value">{{ o.qty_kg|int }} kg</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Status:</span>
+          <span class="detail-value">{{ stage_labels.get(o.status, o.status)|title }}</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Buyer:</span>
+          <span class="detail-value">{{ o.buyer_name }}</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Seller:</span>
+          <span class="detail-value">{{ o.seller_name }}</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Placed:</span>
+          <span class="detail-value">{{ o.created_at }}</span>
+        </div>
+        {% if o.get('payment_amount') %}
+        <div class="detail-item">
+          <span class="detail-label">Amount:</span>
+          <span class="detail-value">Rs.{{ o.payment_amount|int }}</span>
+        </div>
+        {% endif %}
+        {% if o.get('co2_saved_kg') %}
+        <div class="detail-item">
+          <span class="detail-label">CO2e avoided:</span>
+          <span class="detail-value">{{ "{:,.0f}".format(o.co2_saved_kg) }}kg (est.)</span>
+        </div>
+        {% endif %}
+      </div>
+
+      <h4>Order History</h4>
+      <div class="order-timeline">
+        {% for event in o.history %}
+        <div class="timeline-event">
+          <span class="event-status">{{ event.status|title }}</span>
+          <span class="event-time">{{ event.at }}</span>
+          {% if event.get('reason') %}
+          <span class="event-reason">{{ event.reason }}</span>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="detail-actions">
+        <a href="{{ url_for('search') }}" class="btn">Find Similar Listings</a>
+        <button onclick="printOrder('{{ o.id }}')" class="btn">Print Order</button>
+        <a href="{{ url_for('order_invoice', order_id=o.id) }}" target="_blank" class="btn">🧾 View Invoice</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endfor %}
+</div>
+
+{% else %}
+<div class="empty-state">
+  <div class="empty-icon">📦</div>
+  <h3>No Active Orders</h3>
+  <p>Start your circular economy journey by finding available materials in the marketplace.</p>
+  <a href="{{ url_for('search') }}" class="btn primary">Search Marketplace</a>
+</div>
+{% endif %}
+
+<script>
+// Global state
+let currentView = 'grid';
+let currentFilter = 'all';
+
+// Quick Actions
+function toggleQuickActions() {
+  const panel = document.getElementById('quickActionsPanel');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+function bulkAdvance(status) {
+  const orders = document.querySelectorAll('.order-card');
+  let count = 0;
+  
+  orders.forEach(order => {
+    if (order.dataset.status === status) {
+      count++;
+    }
+  });
+  
+  if (count === 0) {
+    alert(`No orders found with status: ${status}`);
+    toggleQuickActions();
+    return;
+  }
+  
+  if (confirm(`Advance ${count} orders from ${status} to next stage?`)) {
+    // Use bulk endpoint
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/orders/bulk-advance';
+    
+    const statusInput = document.createElement('input');
+    statusInput.type = 'hidden';
+    statusInput.name = 'status_filter';
+    statusInput.value = status;
+    
+    form.appendChild(statusInput);
+    document.body.appendChild(form);
+    form.submit();
+  } else {
+    toggleQuickActions();
+  }
+}
+
+function exportOrders() {
+  const orders = document.querySelectorAll('.order-card');
+  let csv = 'Order ID,Material,Quantity,Buyer,Seller,Status,Created At\n';
+  
+  orders.forEach(order => {
+    const id = order.querySelector('.order-id-section h3').textContent;
+    const material = order.querySelector('.material-name').textContent;
+    const quantity = order.querySelector('.material-quantity').textContent;
+    // Each .party div is <span class="party-label">Buyer:</span><span class="party-name">...</span>,
+    // so .party-name is always the *second* span within its own parent -- `.party-name:nth-of-type(1)`
+    // never matches anything (it'd need to be the first span), which made order.querySelector(...)
+    // return null and crash the whole export on .textContent. Grabbing all .party-name spans in DOM
+    // order (buyer's .party div comes before seller's) sidesteps :nth-of-type entirely.
+    const partyNames = order.querySelectorAll('.party-name');
+    const buyer = partyNames[0] ? partyNames[0].textContent : '';
+    const seller = partyNames[1] ? partyNames[1].textContent : '';
+    const status = order.querySelector('.status-badge').textContent;
+    const date = order.querySelector('.meta-item').textContent.replace('📅 ', '');
+
+    csv += `${id},${material},${quantity},${buyer},${seller},${status},${date}\n`;
+  });
+  
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'orders_export.csv';
+  a.click();
+  
+  toggleQuickActions();
+}
+
+function toggleHelp() {
+  const panel = document.getElementById('helpPanel');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+function showHelp() {
+  document.getElementById('quickActionsPanel').style.display = 'none';
+  document.getElementById('helpPanel').style.display = 'block';
+}
+
+// Search + status filter. Both act on the same order list and are combined (AND) in
+// applyOrderFilters() so typing a search term while a stat-card filter is active narrows
+// within that filter instead of one silently overriding the other. Completed/cancelled
+// orders no longer live in this list at all -- they have their own page (see the
+// sidebar's "Order History" link) -- so there's no 'completed' entry here anymore;
+// the Completed stat tile just navigates there instead of filtering this list.
+const FILTER_STATUS_MAP = {
+  'all': [],
+  'pending': ['placed', 'confirmed'],
+  'active': ['picked_up', 'delivered']
+};
+
+function quickFilter(filterType) {
+  currentFilter = filterType;
+
+  document.querySelectorAll('.order-stat-card').forEach(card => {
+    card.classList.toggle('active', card.dataset.filter === filterType);
+  });
+
+  applyOrderFilters();
+}
+
+function applyOrderFilters() {
+  const searchTerm = document.getElementById('globalSearch').value.toLowerCase();
+  const allowedStatuses = FILTER_STATUS_MAP[currentFilter];
+  const orders = document.querySelectorAll('.order-card');
+
+  orders.forEach(order => {
+    const statusMatch = allowedStatuses.length === 0 || allowedStatuses.includes(order.dataset.status);
+    const searchMatch = !searchTerm || order.dataset.search.toLowerCase().includes(searchTerm);
+    order.style.display = (statusMatch && searchMatch) ? 'block' : 'none';
+  });
+}
+
+function clearSearch() {
+  document.getElementById('globalSearch').value = '';
+  applyOrderFilters();
+}
+
+// View Toggle. Layout itself lives entirely in the .orders-grid / .orders-grid.is-list-view
+// CSS rules -- this just flips a class, rather than setting inline styles from JS that
+// could disagree with what the stylesheet says. Guarded against a missing container
+// because .orders-grid only renders when there's at least one order; without the guard,
+// the DOMContentLoaded call below would throw on a page with zero orders.
+function toggleView(view) {
+  currentView = view;
+
+  document.getElementById('listViewBtn').classList.toggle('active', view === 'list');
+  document.getElementById('gridViewBtn').classList.toggle('active', view === 'grid');
+
+  const container = document.querySelector('.orders-grid');
+  if (container) {
+    container.classList.toggle('is-list-view', view === 'list');
+  }
+}
+
+function toggleOrderDetails(orderId) {
+  const details = document.getElementById('details_' + orderId);
+  details.style.display = details.style.display === 'none' ? 'block' : 'none';
+}
+
+function confirmCancelOrder(orderId) {
+  if (confirm('Are you sure you want to cancel this order? This action cannot be undone.')) {
+    const reason = prompt('Please provide a reason for cancellation:');
+    if (reason) {
+      // Create form and submit
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = `/order/${orderId}/cancel`;
+      
+      const reasonInput = document.createElement('input');
+      reasonInput.type = 'hidden';
+      reasonInput.name = 'reason';
+      reasonInput.value = reason;
+      
+      form.appendChild(reasonInput);
+      document.body.appendChild(form);
+      form.submit();
+    }
+  }
+}
+
+function raiseDispute(orderId) {
+  const reason = prompt('What went wrong with this order? (e.g. material never arrived, quality issue, wrong quantity)');
+  if (!reason || !reason.trim()) return;
+
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = `/order/${orderId}/dispute`;
+
+  const reasonInput = document.createElement('input');
+  reasonInput.type = 'hidden';
+  reasonInput.name = 'reason';
+  reasonInput.value = reason.trim();
+
+  form.appendChild(reasonInput);
+  document.body.appendChild(form);
+  form.submit();
+}
+
+const PRINT_STAGE_META = {
+  placed:     { label: 'Placed',              color: '#a8752e', bg: '#f6ecd8' },
+  confirmed:  { label: 'Confirmed by seller',  color: '#1f7d54', bg: '#dcf0e5' },
+  picked_up:  { label: 'Picked up',            color: '#a8752e', bg: '#f6ecd8' },
+  delivered:  { label: 'Delivered',            color: '#1f7d54', bg: '#dcf0e5' },
+  completed:  { label: 'Completed & rated',    color: '#1f7d54', bg: '#dcf0e5' },
+  cancelled:  { label: 'Cancelled',            color: '#a1442f', bg: '#f6e0da' },
+};
+
+function escapeHtml(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function titleCase(value) {
+  return String(value || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function printOrder(orderId) {
+  const orderCard = document.querySelector(`.order-card[data-order-id="${orderId}"]`);
+  if (!orderCard || !orderCard.dataset.order) return;
+
+  const o = JSON.parse(orderCard.dataset.order);
+  const stage = PRINT_STAGE_META[o.status] || { label: titleCase(o.status), color: '#374151', bg: '#f3f4f6' };
+  const printedAt = new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+
+  const facts = [
+    ['Material', titleCase(o.material)],
+    ['Quantity', `${Math.round(o.qty_kg)} kg`],
+    ['Buyer', o.buyer_name],
+    ['Seller', o.seller_name],
+    ['Placed', o.created_at],
+  ];
+  if (o.payment_amount) facts.push(['Payment', `Rs. ${Math.round(o.payment_amount).toLocaleString('en-IN')}`]);
+  if (o.co2_saved_kg) facts.push(['CO2e avoided (est.)', `${Math.round(o.co2_saved_kg).toLocaleString('en-IN')} kg`]);
+
+  const factsHtml = facts.map(([label, value]) => `
+    <div class="fact">
+      <div class="fact-label">${escapeHtml(label)}</div>
+      <div class="fact-value">${escapeHtml(value)}</div>
+    </div>`).join('');
+
+  let noteHtml = '';
+  if (o.status === 'completed' && o.rating_buyer_to_seller) {
+    noteHtml = `
+      <div class="note note-good">
+        <strong>Ratings on completion</strong><br>
+        Buyer &rarr; Seller: ${'&#9733;'.repeat(o.rating_buyer_to_seller)}${'&#9734;'.repeat(5 - o.rating_buyer_to_seller)} (${o.rating_buyer_to_seller}/5)&nbsp;&nbsp;
+        Seller &rarr; Buyer: ${'&#9733;'.repeat(o.rating_seller_to_buyer)}${'&#9734;'.repeat(5 - o.rating_seller_to_buyer)} (${o.rating_seller_to_buyer}/5)
+      </div>`;
+  } else if (o.status === 'cancelled') {
+    noteHtml = `
+      <div class="note note-bad">
+        <strong>Cancelled${o.cancelled_by ? ' by ' + escapeHtml(titleCase(o.cancelled_by)) : ''}</strong>
+        ${o.cancellation_reason ? '<br>Reason: ' + escapeHtml(o.cancellation_reason) : ''}
+      </div>`;
+  }
+
+  const historyHtml = (o.history || []).map((event, i, arr) => `
+    <div class="tl-row${i === arr.length - 1 ? ' tl-row-last' : ''}">
+      <div class="tl-dot" style="${event.status === 'cancelled' ? 'background:#a1442f' : ''}"></div>
+      <div class="tl-body">
+        <div class="tl-status">${escapeHtml(titleCase(event.status))}</div>
+        <div class="tl-time">${escapeHtml(event.at)}${event.reason ? ' &mdash; ' + escapeHtml(event.reason) : ''}</div>
+      </div>
+    </div>`).join('');
+
+  const doc = `
+    <html>
+    <head>
+      <title>Order ${escapeHtml(o.id)} — SymbioLink AI</title>
+      <meta charset="UTF-8">
+      <style>
+        * { box-sizing: border-box; }
+        body {
+          font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+          color: #14181f; margin: 0; padding: 44px 52px;
+          -webkit-print-color-adjust: exact; print-color-adjust: exact;
+        }
+        .letterhead { display: flex; align-items: center; justify-content: space-between; padding-bottom: 18px; border-bottom: 2px solid #14181f; margin-bottom: 26px; }
+        .brand { display: flex; align-items: center; gap: 11px; }
+        .brand .mark {
+          width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+          background: linear-gradient(135deg, #5cd7a0, #1f7d54 55%, #d9a441);
+          display: flex; align-items: center; justify-content: center;
+          font-weight: 800; font-size: 13px; color: #0f1f18;
+        }
+        .brand .name { font-weight: 800; font-size: 16px; letter-spacing: -0.01em; }
+        .brand .sub { font-size: 10.5px; color: #6b7280; font-weight: 600; }
+        .letterhead .meta { text-align: right; font-size: 11.5px; color: #6b7280; }
+        .letterhead .meta strong { display: block; color: #14181f; font-size: 13px; margin-bottom: 2px; }
+
+        .order-title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 26px; }
+        .order-title-row h1 { margin: 0; font-size: 25px; letter-spacing: -0.01em; }
+        .stage-pill { display: inline-block; padding: 5px 14px; border-radius: 999px; font-size: 12px; font-weight: 700; color: ${stage.color}; background: ${stage.bg}; }
+
+        .facts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px 28px; padding: 20px 0; border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb; margin-bottom: 22px; }
+        .fact-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: #9ca3af; font-weight: 700; margin-bottom: 3px; }
+        .fact-value { font-size: 14px; font-weight: 600; color: #14181f; }
+
+        .note { border-radius: 10px; padding: 12px 16px; font-size: 12.5px; margin-bottom: 22px; }
+        .note-good { background: #dcf0e5; color: #1f7d54; }
+        .note-bad { background: #f6e0da; color: #a1442f; }
+
+        h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; margin: 0 0 14px; }
+        .timeline { padding-left: 2px; }
+        .tl-row { display: flex; gap: 12px; padding-bottom: 16px; position: relative; }
+        .tl-row:not(.tl-row-last)::before { content: ""; position: absolute; left: 3px; top: 14px; bottom: -2px; width: 1.5px; background: #e5e7eb; }
+        .tl-dot { width: 7px; height: 7px; border-radius: 50%; background: #1f7d54; margin-top: 5px; flex-shrink: 0; }
+        .tl-status { font-weight: 700; font-size: 13px; }
+        .tl-time { font-size: 11.5px; color: #6b7280; margin-top: 1px; }
+
+        .footer { margin-top: 36px; padding-top: 14px; border-top: 1px solid #e5e7eb; font-size: 10.5px; color: #9ca3af; text-align: center; }
+        @media print { body { padding: 22px 30px; } }
+      </style>
+    </head>
+    <body>
+      <div class="letterhead">
+        <div class="brand">
+          <div class="mark">SL</div>
+          <div>
+            <div class="name">SymbioLink AI</div>
+            <div class="sub">Industrial Symbiosis Network</div>
+          </div>
+        </div>
+        <div class="meta"><strong>Order Receipt</strong>Printed ${escapeHtml(printedAt)}</div>
+      </div>
+
+      <div class="order-title-row">
+        <h1>Order ${escapeHtml(o.id)}</h1>
+        <span class="stage-pill">${escapeHtml(stage.label)}</span>
+      </div>
+
+      <div class="facts">${factsHtml}</div>
+
+      ${noteHtml}
+
+      <h2>Order history</h2>
+      <div class="timeline">${historyHtml}</div>
+
+      <div class="footer">Reference prices and transport rates are illustrative estimates, not live market data. &middot; SymbioLink AI</div>
+    </body>
+    </html>
+  `;
+
+  const printWindow = window.open('', '_blank');
+  printWindow.document.write(doc);
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.onload = () => printWindow.print();
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', function(e) {
+  // Ctrl+F - Focus search
+  if (e.ctrlKey && e.key === 'f') {
+    e.preventDefault();
+    document.getElementById('globalSearch').focus();
+  }
+  
+  // Escape - Close panels
+  if (e.key === 'Escape') {
+    document.getElementById('quickActionsPanel').style.display = 'none';
+    document.getElementById('helpPanel').style.display = 'none';
+  }
+  
+  // Number keys for quick filters
+  if (e.key >= '1' && e.key <= '4') {
+    const filters = ['all', 'pending', 'active', 'completed'];
+    quickFilter(filters[parseInt(e.key) - 1]);
+  }
+});
+
+// Double-click to expand details
+document.addEventListener('dblclick', function(e) {
+  const orderCard = e.target.closest('.order-card');
+  if (orderCard) {
+    const orderId = orderCard.querySelector('.order-id-section h3').textContent;
+    toggleOrderDetails(orderId);
+  }
+});
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+  // Set default view
+  toggleView('grid');
+  
+  // Highlight first pending order if exists
+  const pendingOrders = document.querySelectorAll('.order-card[data-status="placed"], .order-card[data-status="confirmed"]');
+  if (pendingOrders.length > 0) {
+    pendingOrders[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    pendingOrders[0].style.boxShadow = '0 0 20px rgba(47, 174, 116, 0.5)';
+    setTimeout(() => {
+      pendingOrders[0].style.boxShadow = '';
+    }, 3000);
+  }
+});
+</script>
+{% endblock %}
+
+{% block extra_scripts %}
+{% include "_pay_script.html" %}
+{% endblock %}

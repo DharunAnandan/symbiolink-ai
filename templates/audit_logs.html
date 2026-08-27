@@ -1,0 +1,93 @@
+{% extends "layout.html" %}
+{% block title %}Audit Logs — SymbioLink AI{% endblock %}
+{% set active = 'audit_logs' %}
+{% block page_title %}Audit Logs{% endblock %}
+{% block page_subtitle %}Order history, WhatsApp intake, and trust ratings for compliance and monitoring.{% endblock %}
+
+{% block content %}
+
+<div class="stat-grid cols-3">
+  <div class="stat-card"><div class="val" data-count="{{ order_history|length }}">{{ order_history|length }}</div><div class="label">Order events logged</div></div>
+  <div class="stat-card"><div class="val" data-count="{{ whatsapp_logs|length }}">{{ whatsapp_logs|length }}</div><div class="label">WhatsApp messages</div></div>
+  <div class="stat-card"><div class="val" data-count="{{ trust_ratings|length }}">{{ trust_ratings|length }}</div><div class="label">Trust ratings recorded</div></div>
+</div>
+
+  <section>
+    <h2>Order history</h2>
+    <div class="card-body">
+      {% if order_history %}
+      <table>
+        <thead><tr><th>Order</th><th>Status</th><th>Recorded</th></tr></thead>
+        <tbody>
+        {% for entry in order_history %}
+        <tr>
+          <td class="cell-title">ORD{{ '%03d' % entry.order_id }}</td>
+          <td><span class="hop-badge">{{ entry.status|upper }}</span></td>
+          <td class="muted nowrap">{{ entry.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-icon">📋</div>
+        <h3>No order history yet</h3>
+        <p>Order status changes will be logged here as they happen.</p>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section>
+    <h2>WhatsApp logs</h2>
+    <div class="card-body">
+      {% if whatsapp_logs %}
+      <table>
+        <thead><tr><th>Phone</th><th>Message</th><th>Received</th></tr></thead>
+        <tbody>
+        {% for log in whatsapp_logs %}
+        <tr>
+          <td class="nowrap">{{ log.phone_number }}</td>
+          <td class="muted">{{ log.message_body }}</td>
+          <td class="muted nowrap">{{ log.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-icon">💬</div>
+        <h3>No WhatsApp logs yet</h3>
+        <p>Simulated inbound/outbound messages will show up here.</p>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section>
+    <h2>Trust ratings</h2>
+    <div class="card-body">
+      {% if trust_ratings %}
+      <table>
+        <thead><tr><th>From &rarr; To</th><th>Rating</th><th>Recorded</th></tr></thead>
+        <tbody>
+        {% for rating in trust_ratings %}
+        <tr>
+          <td class="chain">{{ rating.from_unit_id }} &rarr; {{ rating.to_unit_id }}</td>
+          <td class="price">{{ rating.rating }}&#9733; / 5</td>
+          <td class="muted nowrap">{{ rating.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-icon">⭐</div>
+        <h3>No trust ratings yet</h3>
+        <p>Ratings will appear here once units start rating each other after completed exchanges.</p>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+{% endblock %}

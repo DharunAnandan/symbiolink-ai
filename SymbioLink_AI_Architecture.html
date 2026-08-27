@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SymbioLink AI — Architecture</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@700;800&display=swap');
+
+  :root {
+    --bg: #f6f6f2;
+    --surface: #ffffff;
+    --surface-2: #fbfbf8;
+    --ink: #14171a;
+    --ink-2: #4b4f54;
+    --muted: #83888d;
+    --border: #e6e4dc;
+    --border-strong: #d5d2c6;
+    --brand: #047857;
+    --brand-2: #059669;
+    --brand-3: #10b981;
+    --brand-light: #e7f6ef;
+    --amber: #b6540f;
+    --amber-light: #fdf1e0;
+    --shadow-sm: 0 1px 2px rgba(20,20,15,0.045);
+    --shadow-md: 0 2px 5px rgba(20,20,15,0.05), 0 10px 24px rgba(20,20,15,0.055);
+    --radius-lg: 18px;
+    --radius-md: 12px;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: 'Inter', -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 1180px; margin: 0 auto; padding: 44px 32px 60px; }
+
+  .kicker {
+    display: inline-flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.09em; color: var(--brand);
+    background: var(--brand-light); padding: 5px 12px; border-radius: 999px; margin-bottom: 14px;
+  }
+  h1 {
+    font-family: 'Manrope', sans-serif; font-size: 32px; font-weight: 800; letter-spacing: -0.02em;
+    margin: 0 0 8px;
+  }
+  .sub { color: var(--ink-2); font-size: 15px; margin: 0 0 30px; max-width: 760px; line-height: 1.6; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm); padding: 30px 34px; margin-bottom: 28px;
+  }
+  .card h2 {
+    font-family: 'Manrope', sans-serif; font-size: 13px; font-weight: 800; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--muted); margin: 0 0 16px; display: flex; align-items: center; gap: 8px;
+  }
+  .card h2::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--brand); }
+  .abstract-body p { font-size: 14.5px; line-height: 1.75; color: var(--ink-2); margin: 0 0 14px; }
+  .abstract-body p:last-child { margin-bottom: 0; }
+  .abstract-body strong { color: var(--ink); }
+
+  .diagram-wrap { overflow-x: auto; padding-top: 4px; }
+  .diagram-wrap svg { display: block; min-width: 900px; width: 100%; height: auto; }
+
+  .box-label { font: 700 13.5px 'Manrope', sans-serif; fill: var(--ink); }
+  .box-sub   { font: 500 11px 'Inter', sans-serif; fill: var(--muted); }
+  .edge-label{ font: 700 10.5px 'Inter', sans-serif; }
+  .group-tag { font: 800 10px 'Inter', sans-serif; letter-spacing: 0.08em; fill: var(--muted); text-transform: uppercase; }
+  .chip-num  { font: 800 11px 'Manrope', sans-serif; fill: white; }
+  .edge-bg   { fill: #f6f6f2; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 22px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border); }
+  .legend-item { display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: var(--ink-2); font-weight: 600; }
+  .legend-swatch { width: 26px; height: 0; border-top: 2.5px solid var(--brand); }
+  .legend-swatch.dashed { border-top: 2.5px dashed var(--amber); }
+  .legend-swatch.data { border-top: 2.5px dashed var(--border-strong); }
+
+  .stack { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+  .chip {
+    font-size: 12px; font-weight: 700; color: var(--ink-2); background: var(--surface-2);
+    border: 1px solid var(--border); padding: 6px 12px; border-radius: 999px;
+  }
+
+  .scope-note {
+    background: var(--amber-light); border: 1px solid #f0d9b8; border-radius: var(--radius-md);
+    padding: 14px 18px; font-size: 13px; color: #7a4109; line-height: 1.6; margin-top: 18px;
+  }
+  .scope-note b { color: #5c3006; }
+
+  footer { text-align: center; color: var(--muted); font-size: 11.5px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <span class="kicker">SymbioLink AI &middot; System Architecture</span>
+  <h1>How the six layers fit together</h1>
+  <p class="sub">Team CircuLink &middot; Sustainability Hackathon 2026 &middot; Theme: Circular Economy. A digital
+  matching platform connecting one MSME's waste to another's raw-material need, across an industrial cluster.</p>
+
+  <div class="card">
+    <h2>Abstract</h2>
+    <div class="abstract-body">
+      <p>SymbioLink AI is a working prototype for a digital industrial-symbiosis platform that connects small and
+      medium manufacturing units (MSMEs) within a shared industrial cluster, turning one factory's waste into
+      another factory's cheap raw material. Rather than a simple one-to-one classifieds board, the system models
+      the cluster as a graph and searches for both direct matches and <strong>2&ndash;3 hop exchange chains</strong>
+      &mdash; Unit A's waste feeding Unit B, whose own byproduct feeds Unit C &mdash; ranking each by estimated cost
+      savings, transport distance, and a trust score built from past completed exchanges.</p>
+      <p>A <strong>predictive layer</strong> forecasts a unit's next likely waste listing from its posting history,
+      so a buyer can be lined up before the waste is even generated, and a <strong>logistics-pooling layer</strong>
+      groups nearby low-volume matches into shared transport runs that would otherwise be too small to justify a
+      solo pickup. Listings can be created through a lightweight web form or, in a simulated preview of the
+      intended production path, through a WhatsApp or voice-note message parsed into a structured listing &mdash;
+      removing the literacy and app-adoption barriers that keep many MSME owners out of digital marketplaces
+      today.</p>
+      <p>A full <strong>order lifecycle</strong> &mdash; placed, confirmed, picked up, delivered, completed &mdash;
+      closes the loop: every completed exchange feeds a two-way rating back into the trust ledger, which in turn
+      raises or lowers that unit's confidence score in future match rankings, creating a self-reinforcing feedback
+      cycle between transactions and trust. Built with Flask on a synthetic dataset modeled on documented Indian
+      industrial cluster patterns, the prototype is intentionally rules-based and transparent rather than a
+      black-box model, with reference prices and transport rates flagged honestly as illustrative estimates
+      pending real-world tuning ahead of a pilot deployment.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Architecture diagram</h2>
+    <div class="diagram-wrap">
+<svg viewBox="0 0 1160 700" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrowGreen" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#059669"/>
+    </marker>
+    <marker id="arrowAmber" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#b6540f"/>
+    </marker>
+    <marker id="arrowInk" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#4b4f54"/>
+    </marker>
+  </defs>
+
+  <!-- ===== group tags ===== -->
+  <text x="60" y="12" class="group-tag">Access &amp; Listing &middot; Layers 1&ndash;2</text>
+  <text x="56" y="202" class="group-tag">Cluster Engine &middot; Layers 3&ndash;6</text>
+  <text x="60" y="584" class="group-tag">Output</text>
+
+  <!-- ===== boxes (drawn before connectors/labels so nothing gets painted over) ===== -->
+
+  <!-- Access & Listing row -->
+  <rect x="60" y="20" width="300" height="70" rx="14" fill="#ffffff" stroke="#e6e4dc" stroke-width="1.5"/>
+  <rect x="60" y="20" width="5" height="70" rx="2.5" fill="#14171a"/>
+  <text x="82" y="48" class="box-label">WhatsApp / Voice-Note Intake</text>
+  <text x="82" y="66" class="box-sub">whatsapp_stub.py &middot; simulated NLP parsing</text>
+
+  <rect x="400" y="20" width="700" height="70" rx="14" fill="#ffffff" stroke="#e6e4dc" stroke-width="1.5"/>
+  <rect x="400" y="20" width="5" height="70" rx="2.5" fill="#14171a"/>
+  <text x="422" y="48" class="box-label">Web App &mdash; Register &middot; Search &middot; Units Directory</text>
+  <text x="422" y="66" class="box-sub">app.py routes + Jinja templates</text>
+
+  <!-- Data model -->
+  <rect x="60" y="126" width="1040" height="56" rx="12" fill="#fbfbf8" stroke="#d5d2c6" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <text x="580" y="159" text-anchor="middle" class="box-label">Shared Data Model &mdash; Units &middot; Listings &middot; Reference Price Table &nbsp; (data.py)</text>
+
+  <!-- Cluster engine bracket -->
+  <rect x="40" y="208" width="1080" height="340" rx="18" fill="none" stroke="#d5d2c6" stroke-width="1.5" stroke-dasharray="3 5"/>
+
+  <!-- Predictive -->
+  <rect x="60" y="232" width="300" height="84" rx="14" fill="#ffffff" stroke="#e6e4dc" stroke-width="1.5"/>
+  <rect x="60" y="232" width="5" height="84" rx="2.5" fill="#047857"/>
+  <circle cx="86" cy="252" r="11" fill="#047857"/><text x="86" y="256" text-anchor="middle" class="chip-num">3</text>
+  <text x="106" y="257" class="box-label">Predictive Layer</text>
+  <text x="82" y="278" class="box-sub">predictive.py &middot; forecasts next</text>
+  <text x="82" y="292" class="box-sub">waste listing from posting history</text>
+
+  <!-- Matching -->
+  <rect x="390" y="232" width="330" height="84" rx="14" fill="#ffffff" stroke="#047857" stroke-width="2"/>
+  <rect x="390" y="232" width="5" height="84" rx="2.5" fill="#047857"/>
+  <circle cx="416" cy="252" r="11" fill="#047857"/><text x="416" y="256" text-anchor="middle" class="chip-num">4</text>
+  <text x="436" y="257" class="box-label">Multi-Hop Matching Engine</text>
+  <text x="412" y="278" class="box-sub">matching.py &middot; graph model + DFS</text>
+  <text x="412" y="292" class="box-sub">chain search, scored by saving/distance/trust</text>
+
+  <!-- Pooling -->
+  <rect x="750" y="232" width="330" height="84" rx="14" fill="#ffffff" stroke="#e6e4dc" stroke-width="1.5"/>
+  <rect x="750" y="232" width="5" height="84" rx="2.5" fill="#047857"/>
+  <circle cx="776" cy="252" r="11" fill="#047857"/><text x="776" y="256" text-anchor="middle" class="chip-num">5</text>
+  <text x="796" y="257" class="box-label">Logistics Pooling</text>
+  <text x="772" y="278" class="box-sub">pooling.py &middot; union-find clustering of</text>
+  <text x="772" y="292" class="box-sub">low-volume pickups into shared runs</text>
+
+  <!-- Trust -->
+  <rect x="750" y="350" width="330" height="74" rx="14" fill="#ffffff" stroke="#e6e4dc" stroke-width="1.5"/>
+  <rect x="750" y="350" width="5" height="74" rx="2.5" fill="#047857"/>
+  <circle cx="776" cy="370" r="11" fill="#047857"/><text x="776" y="374" text-anchor="middle" class="chip-num">6</text>
+  <text x="796" y="375" class="box-label">Verification &amp; Trust Ledger</text>
+  <text x="772" y="396" class="box-sub">trust.py &middot; rolling two-way ratings</text>
+  <text x="772" y="410" class="box-sub">per unit, seeded at a neutral 3.5/5</text>
+
+  <!-- Orders -->
+  <rect x="60" y="456" width="660" height="74" rx="14" fill="#ffffff" stroke="#e6e4dc" stroke-width="1.5"/>
+  <rect x="60" y="456" width="5" height="74" rx="2.5" fill="#b6540f"/>
+  <text x="82" y="484" class="box-label">Order Lifecycle</text>
+  <text x="82" y="502" class="box-sub">orders.py &middot; placed &rarr; confirmed &rarr; picked up &rarr; delivered &rarr; completed</text>
+  <text x="82" y="516" class="box-sub">the transactional bridge between a match and a real exchange</text>
+
+  <!-- Output -->
+  <rect x="60" y="590" width="1040" height="80" rx="14" fill="#ffffff" stroke="#e6e4dc" stroke-width="1.5"/>
+  <rect x="60" y="590" width="5" height="80" rx="2.5" fill="#14171a"/>
+  <text x="82" y="618" class="box-label">Output &mdash; Flask Dashboard</text>
+  <text x="82" y="636" class="box-sub">app.py + templates/ &middot; Dashboard &middot; Matches &middot; Pooling &middot; Predictions &middot; Trust &middot; Units &middot; Orders</text>
+  <text x="82" y="652" class="box-sub">one live view a cluster association or an individual unit can act on</text>
+
+  <!-- ===== connectors (drawn over boxes so lines reach the edges cleanly) ===== -->
+  <g fill="none" stroke="#059669" stroke-width="2">
+    <path d="M210,90 L210,126" marker-end="url(#arrowGreen)"/>
+    <path d="M750,90 L750,126" marker-end="url(#arrowGreen)"/>
+    <path d="M210,182 L210,232" marker-end="url(#arrowGreen)"/>
+    <path d="M555,182 L555,232" marker-end="url(#arrowGreen)"/>
+    <path d="M915,182 L915,232" marker-end="url(#arrowGreen)"/>
+    <path d="M720,274 L750,274" marker-end="url(#arrowGreen)"/>
+    <path d="M580,548 L580,590" marker-end="url(#arrowGreen)"/>
+  </g>
+  <g fill="none" stroke="#4b4f54" stroke-width="2">
+    <path d="M470,316 L470,400 L300,400 L300,456" marker-end="url(#arrowInk)"/>
+    <path d="M720,493 L750,420 L750,387" marker-end="url(#arrowInk)"/>
+  </g>
+  <g fill="none" stroke="#b6540f" stroke-width="2" stroke-dasharray="6 4">
+    <path d="M360,274 L390,274" marker-end="url(#arrowAmber)"/>
+    <path d="M830,350 L830,330 L555,330 L555,316" marker-end="url(#arrowAmber)"/>
+  </g>
+
+  <!-- ===== edge labels (drawn last, always on top, each on its own backing chip) ===== -->
+  <g>
+    <rect x="234" y="101" width="76" height="15" class="edge-bg"/>
+    <text x="238" y="112" class="edge-label" fill="#059669">listing data</text>
+
+    <rect x="368" y="255" width="118" height="15" class="edge-bg"/>
+    <text x="372" y="266" class="edge-label" fill="#b6540f">forecasted listings</text>
+
+    <rect x="728" y="255" width="150" height="15" class="edge-bg"/>
+    <text x="732" y="266" class="edge-label" fill="#059669">candidate match edges</text>
+
+    <rect x="304" y="383" width="120" height="15" class="edge-bg"/>
+    <text x="308" y="394" class="edge-label" fill="#4b4f54">search &amp; order flow</text>
+
+    <rect x="676" y="452" width="104" height="15" class="edge-bg"/>
+    <text x="680" y="463" class="edge-label" fill="#4b4f54">both sides rate</text>
+
+    <rect x="560" y="316" width="182" height="15" class="edge-bg"/>
+    <text x="564" y="327" class="edge-label" fill="#b6540f">avg trust &rarr; confidence score</text>
+
+    <rect x="592" y="570" width="176" height="15" class="edge-bg"/>
+    <text x="596" y="581" class="edge-label" fill="#059669">rendered live, layer by layer</text>
+  </g>
+
+</svg>
+    </div>
+
+    <div class="legend">
+      <span class="legend-item"><span class="legend-swatch"></span>Primary data flow (listings &rarr; engine &rarr; output)</span>
+      <span class="legend-item"><span class="legend-swatch dashed"></span>Predictive signal &amp; trust feedback loop</span>
+      <span class="legend-item"><span class="legend-swatch data"></span>Shared substrate / grouping boundary</span>
+    </div>
+
+    <div class="scope-note">
+      <b>Honest scope note:</b> today, Search and Order creation read listings directly rather than being gated by
+      the Matching Engine's ranked chains &mdash; those chains are surfaced as suggestions on the dashboard, on
+      register confirmation, and on unit profiles. Tightening that pipeline (routing orders through ranked matches)
+      is a natural next step, alongside the other items in the README's "Next steps toward a pilot".
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Tech stack</h2>
+    <div class="stack">
+      <span class="chip">Python 3</span>
+      <span class="chip">Flask</span>
+      <span class="chip">Jinja2 templates</span>
+      <span class="chip">In-memory data model</span>
+      <span class="chip">Chart.js (savings chart)</span>
+      <span class="chip">vis-network (cluster graph)</span>
+      <span class="chip">Twilio WhatsApp (planned)</span>
+      <span class="chip">Whisper / Speech-to-text (planned)</span>
+      <span class="chip">SQLite (planned persistence)</span>
+    </div>
+  </div>
+
+  <footer>SymbioLink AI &middot; Team CircuLink &middot; Sustainability Hackathon 2026</footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,125 @@
+{% extends "layout.html" %}
+{% block title %}SymbioLink AI — Search Marketplace{% endblock %}
+{% set active = 'search' %}
+{% block page_title %}Search the Waste Marketplace{% endblock %}
+{% block page_subtitle %}Find byproducts available right now in the cluster, priced well below buying new material.{% endblock %}
+{% block page_actions %}
+  <a href="{{ url_for('register_unit') }}" class="btn primary">+ Register a listing</a>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-xl">
+
+  <form class="search-bar" method="GET">
+    <input type="text" name="q" value="{{ query }}" placeholder="Search a material, e.g. metal shavings, bagasse, fabric offcuts...">
+    <select name="category">
+      <option value="">All categories</option>
+      {% for c in categories %}
+      <option value="{{ c }}" {% if c == category_filter %}selected{% endif %}>{{ c|capitalize }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">Search</button>
+  </form>
+
+  {% if not acting_as_unit %}
+  <p class="muted" style="margin: -6px 0 18px;"><a href="{{ url_for('register_unit') }}">Register your company</a> to see your own listings flagged separately from everyone else's below.</p>
+  {% endif %}
+
+  <div class="section-label">Byproducts available now</div>
+  {% if results %}
+  <div class="card-body results-body">
+  <table class="fixed-cols">
+    <thead>
+    <tr>
+      <th style="width:26%;">Material</th><th style="width:10%;">Qty</th><th style="width:20%;">From</th>
+      <th style="width:20%;">Price</th><th style="width:24%;"><span class="sr-only">Actions</span></th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for r in results %}
+    <tr class="{% if r.is_own %}row-own{% endif %}">
+      <td>
+        <div class="cell-title">{{ r.material }}</div>
+        <div class="muted">{{ r.category }}</div>
+      </td>
+      <td class="nowrap">{{ r.qty_kg|int }}kg</td>
+      <td>
+        {{ r.unit_name }}{% if r.is_own %}<span class="you-badge">You</span>{% endif %}
+        {% if r.highly_recommended and not r.is_own %}
+        <span class="recommended-badge" title="{{ r.trust_score }}/5 trust score across {{ r.completed_exchanges }} completed exchanges">&#9733; Highly recommended</span>
+        {% endif %}
+      </td>
+      <td class="nowrap">
+        <div class="price">&#8377;{{ r.price_per_kg }}/kg</div>
+        <div class="muted">vs &#8377;{{ r.new_material_price_per_kg }}/kg new</div>
+      </td>
+      <td class="nowrap actions-cell">
+        {% if r.is_own %}
+        <span class="muted">Your listing</span>
+        {% else %}
+        {% if r.contact_link %}<a href="{{ r.contact_link }}" target="_blank" class="btn btn-sm" aria-label="Chat with {{ r.unit_name }} about {{ r.material }}">Chat</a>{% endif %}
+        <a href="{{ url_for('order_new', unit_id=r.unit_id, material=r.material_key, qty=r.qty_kg) }}" class="btn primary btn-sm">Order</a>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-icon">🔍</div>
+    <h3>No matching listings yet</h3>
+    <p>Try a broader search term, or post a need listing so the platform can alert you when one appears.</p>
+    <a href="{{ url_for('register_unit') }}" class="btn primary">+ Post a need listing</a>
+  </div>
+  {% endif %}
+
+  <div class="section-label" style="margin-top: 28px;">Units looking to buy this</div>
+  {% if need_results %}
+  <div class="card-body results-body">
+  <table class="fixed-cols">
+    <thead>
+    <tr>
+      <th style="width:26%;">Material</th><th style="width:10%;">Qty wanted</th><th style="width:20%;">Unit</th>
+      <th style="width:20%;">Ref. price</th><th style="width:24%;"><span class="sr-only">Actions</span></th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for r in need_results %}
+    <tr class="{% if r.is_own %}row-own{% endif %}">
+      <td>
+        <div class="cell-title">{{ r.material }}</div>
+        <div class="muted">{{ r.category }}</div>
+      </td>
+      <td class="nowrap"><span class="hop-badge">wants {{ r.qty_kg|int }}kg</span></td>
+      <td>
+        {{ r.unit_name }}{% if r.is_own %}<span class="you-badge">You</span>{% endif %}
+        {% if r.highly_recommended and not r.is_own %}
+        <span class="recommended-badge" title="{{ r.trust_score }}/5 trust score across {{ r.completed_exchanges }} completed exchanges">&#9733; Highly recommended</span>
+        {% endif %}
+      </td>
+      <td class="nowrap"><div class="price">&#8377;{{ r.price_per_kg }}/kg</div></td>
+      <td class="nowrap actions-cell">
+        {% if r.is_own %}
+        <span class="muted">Your listing</span>
+        {% else %}
+        {% if r.contact_link %}<a href="{{ r.contact_link }}" target="_blank" class="btn primary btn-sm" aria-label="Chat with {{ r.unit_name }} about {{ r.material }}">I have this &mdash; Chat</a>{% endif %}
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-icon">🤝</div>
+    <h3>No one's looking for this right now</h3>
+    <p>Check the Matching Engine for the full picture of needs across the cluster.</p>
+    <a href="{{ url_for('matches_page') }}" class="btn">View Matching Engine &rarr;</a>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Invoice {{ order.id }} — SymbioLink AI</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    color: #14181f; margin: 0; padding: 0; background: #eef0f2;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .page { max-width: 760px; margin: 32px auto; background: #ffffff; padding: 44px 52px; border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,0.08); }
+
+  .toolbar { max-width: 760px; margin: 0 auto 12px; display: flex; justify-content: flex-end; gap: 10px; }
+  .toolbar button, .toolbar a {
+    font-size: 13px; font-weight: 700; padding: 9px 16px; border-radius: 9px; cursor: pointer;
+    border: 1.5px solid #cfd4da; background: #ffffff; color: #14181f; text-decoration: none;
+  }
+  .toolbar .primary { background: #17c793; border-color: transparent; color: #06120d; }
+
+  .letterhead { display: flex; align-items: center; justify-content: space-between; padding-bottom: 18px; border-bottom: 2px solid #14181f; margin-bottom: 26px; }
+  .brand { display: flex; align-items: center; gap: 11px; }
+  .brand .mark {
+    width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+    background: linear-gradient(135deg, #5cd7a0, #1f7d54 55%, #d9a441);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 13px; color: #0f1f18;
+  }
+  .brand .name { font-weight: 800; font-size: 16px; letter-spacing: -0.01em; }
+  .brand .sub { font-size: 10.5px; color: #6b7280; font-weight: 600; }
+  .letterhead .meta { text-align: right; font-size: 11.5px; color: #6b7280; }
+  .letterhead .meta strong { display: block; color: #14181f; font-size: 13px; margin-bottom: 2px; }
+
+  .title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+  .title-row h1 { margin: 0; font-size: 24px; letter-spacing: -0.01em; }
+  .pill { display: inline-block; padding: 5px 14px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+  .pill-paid { color: #1f7d54; background: #dcf0e5; }
+  .pill-unpaid { color: #a8752e; background: #f6ecd8; }
+  .pill-refunded { color: #2563a8; background: #dcecf6; }
+
+  .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 20px 0; border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb; margin-bottom: 24px; }
+  .party-block .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: #9ca3af; font-weight: 700; margin-bottom: 4px; }
+  .party-block .name { font-size: 15px; font-weight: 700; color: #14181f; }
+  .party-block .sub { font-size: 12px; color: #6b7280; margin-top: 2px; }
+
+  table.items { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+  table.items th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: #9ca3af; font-weight: 700; padding: 8px 0; border-bottom: 1.5px solid #14181f; }
+  table.items td { padding: 12px 0; font-size: 13.5px; border-bottom: 1px solid #e5e7eb; }
+  table.items th:last-child, table.items td:last-child { text-align: right; }
+  .totals { display: flex; justify-content: flex-end; margin-top: 14px; margin-bottom: 26px; }
+  .totals-box { width: 260px; }
+  .totals-row { display: flex; justify-content: space-between; padding: 5px 0; font-size: 13px; color: #4b5563; }
+  .totals-row.grand { border-top: 1.5px dashed #cfd4da; margin-top: 6px; padding-top: 10px; font-size: 16px; font-weight: 800; color: #14181f; }
+
+  .payment-box { background: #f7f8f9; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px 18px; margin-bottom: 24px; }
+  .payment-box .row { display: flex; justify-content: space-between; font-size: 12.5px; color: #4b5563; padding: 3px 0; }
+  .payment-box .row strong { color: #14181f; }
+
+  .note { border-radius: 10px; padding: 12px 16px; font-size: 12.5px; margin-bottom: 22px; background: #dcf0e5; color: #1f7d54; }
+
+  .footer { margin-top: 30px; padding-top: 14px; border-top: 1px solid #e5e7eb; font-size: 10.5px; color: #9ca3af; text-align: center; }
+
+  @media print {
+    body { background: #fff; }
+    .toolbar { display: none; }
+    .page { box-shadow: none; margin: 0; border-radius: 0; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="toolbar">
+    <a href="{{ url_for('orders_page') }}">&larr; Back to orders</a>
+    <button class="primary" onclick="window.print()">Print / Save as PDF</button>
+  </div>
+
+  <div class="page">
+    <div class="letterhead">
+      <div class="brand">
+        <div class="mark">SL</div>
+        <div>
+          <div class="name">SymbioLink AI</div>
+          <div class="sub">Industrial Symbiosis Network</div>
+        </div>
+      </div>
+      <div class="meta"><strong>Invoice</strong>INV-{{ order.id }}<br>{{ order.created_at }}</div>
+    </div>
+
+    <div class="title-row">
+      <h1>Order {{ order.id }}</h1>
+      {% if order.get('payment_status') == 'paid' %}
+      <span class="pill pill-paid">Paid</span>
+      {% elif order.get('payment_status') == 'refunded' %}
+      <span class="pill pill-refunded">Refunded</span>
+      {% else %}
+      <span class="pill pill-unpaid">Unpaid</span>
+      {% endif %}
+    </div>
+
+    <div class="parties">
+      <div class="party-block">
+        <div class="label">Billed to (buyer)</div>
+        <div class="name">{{ order.buyer_name }}</div>
+        <div class="sub">Unit {{ order.buyer_unit_id }}</div>
+      </div>
+      <div class="party-block">
+        <div class="label">Supplied by (seller)</div>
+        <div class="name">{{ order.seller_name }}</div>
+        <div class="sub">Unit {{ order.seller_unit_id }}</div>
+      </div>
+    </div>
+
+    <table class="items">
+      <thead>
+        <tr><th>Description</th><th>Qty</th><th>Rate</th><th>Amount</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>{{ order.material.replace('_',' ')|title }} (byproduct material)</td>
+          <td>{{ order.qty_kg|int }} kg</td>
+          <td>Rs. {{ amount_details.breakdown.price_per_kg }}/kg</td>
+          <td>Rs. {{ "{:,.0f}".format(amount_details.material_cost) }}</td>
+        </tr>
+        {% if amount_details.logistics_cost %}
+        <tr>
+          <td>Logistics{% if amount_details.breakdown.distance_km %} ({{ amount_details.breakdown.distance_km|round(1) }} km){% endif %}</td>
+          <td>&mdash;</td>
+          <td>&mdash;</td>
+          <td>Rs. {{ "{:,.0f}".format(amount_details.logistics_cost) }}</td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+
+    <div class="totals">
+      <div class="totals-box">
+        <div class="totals-row"><span>Material cost</span><span>Rs. {{ "{:,.0f}".format(amount_details.material_cost) }}</span></div>
+        {% if amount_details.logistics_cost %}
+        <div class="totals-row"><span>Logistics</span><span>Rs. {{ "{:,.0f}".format(amount_details.logistics_cost) }}</span></div>
+        {% endif %}
+        <div class="totals-row grand"><span>Total</span><span>Rs. {{ "{:,.0f}".format(amount_details.total_amount) }}</span></div>
+      </div>
+    </div>
+
+    {% if order.get('payment_status') in ('paid', 'refunded') %}
+    <div class="payment-box">
+      {% set payment_ref = order.get('razorpay_payment_id', '') or '' %}
+      <div class="row"><span>Payment method</span><strong>Razorpay{% if payment_ref.startswith('pay_sim') %} (simulated){% endif %}</strong></div>
+      <div class="row"><span>Payment reference</span><strong>{{ order.get('razorpay_payment_id', '—') }}</strong></div>
+      <div class="row"><span>Amount paid</span><strong>Rs. {{ "{:,.0f}".format(order.get('payment_amount', amount_details.total_amount)) }}</strong></div>
+      <div class="row"><span>Status</span><strong>{{ 'Refunded' if order.get('payment_status') == 'refunded' else 'Paid' }}</strong></div>
+    </div>
+    {% endif %}
+
+    {% if order.get('co2_saved_kg') %}
+    <div class="note">&#127793; Sourcing this instead of new material &mdash; and keeping it out of landfill &mdash; avoids an estimated <strong>{{ "{:,.0f}".format(order.co2_saved_kg) }}kg CO2e</strong>.</div>
+    {% endif %}
+
+    <div class="footer">
+      Reference prices and transport rates are illustrative estimates, not live market data or a certified LCA.
+      &middot; SymbioLink AI
+    </div>
+  </div>
+
+</body>
+</html>

@@ -1,0 +1,157 @@
+{% extends "layout.html" %}
+{% block title %}Access & Listing Layer — SymbioLink AI{% endblock %}
+{% set active = 'listings' %}
+{% block page_title %}Access &amp; Listing Layer{% endblock %}
+{% block page_subtitle %}Layer 1&ndash;2 &middot; Simulated WhatsApp / voice-note intake, parsed into structured listings.{% endblock %}
+{% block page_actions %}
+  <a href="{{ url_for('register_unit') }}" class="btn primary">+ Register a listing</a>
+{% endblock %}
+
+{% block content %}
+<section>
+  <h2>Try it yourself</h2>
+  <div class="card-body">
+    <p class="muted">Type a message the way a factory owner might send it over WhatsApp (or as a transcribed voice
+      note) and see how the parser reads it &mdash; this only previews the parse, it doesn't post a real listing.</p>
+    <p class="muted">Material and waste-vs-need detection are read by two trained models (a TF-IDF vector-space
+      material matcher and a text classifier) instead of a fixed keyword/alias list, so typos, synonyms, and
+      phrasing without an obvious trigger word are understood too &mdash; look for the &ldquo;AI parsed&rdquo; badge
+      and confidence score below.</p>
+    <form method="POST" class="simulate-form">
+      <div class="simulate-field simulate-field-sm">
+        <label for="sim_unit_id">Simulating as</label>
+        <select id="sim_unit_id" name="unit_id">
+          {% for u in units %}
+          <option value="{{ u.id }}" {% if u.id == tried_unit_id %}selected{% endif %}>{{ u.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="simulate-field simulate-field-lg">
+        <label for="sim_message">Message</label>
+        <input type="text" id="sim_message" name="message" placeholder="e.g. we have 80kg cardboard offcuts to give away" value="{{ tried_message }}">
+      </div>
+      <button type="submit" class="submit btn-inline">Simulate</button>
+    </form>
+
+    {% if tried %}
+    <div class="simulate-result">
+      <p class="muted simulate-result-label">Parsed result:</p>
+      {% if tried.ok %}
+      <span class="ok-badge">{{ tried.type|upper }} {{ tried.qty_kg|int }}kg {{ tried.material.replace('_',' ') }}</span>
+      {% if tried.material_method in ('ml', 'muril') or tried.type_method == 'ml' %}
+      <span class="status-badge status-info" title="Material and waste-vs-need were read by trained models (TF-IDF material matcher / logistic regression classifier), not a fixed keyword list -- falls back to keyword matching automatically if a model isn't trained yet">
+        AI parsed
+        {%- if tried.material_method in ('ml', 'muril') %} &middot; material {{ (tried.material_confidence * 100)|round|int }}%{{ ' (MuRIL)' if tried.material_method == 'muril' else '' }}{% endif -%}
+        {%- if tried.type_method == 'ml' %} &middot; type {{ (tried.type_confidence * 100)|round|int }}%{% endif -%}
+      </span>
+      {% endif %}
+      <p class="muted simulate-result-followup">
+        Looks right?
+        {% if tried_unit %}
+        <form method="POST" action="{{ url_for('listings_quick_post') }}" style="display:inline;">
+          <input type="hidden" name="unit_id" value="{{ tried_unit.id }}">
+          <input type="hidden" name="material" value="{{ tried.material }}">
+          <input type="hidden" name="qty_kg" value="{{ tried.qty_kg }}">
+          <input type="hidden" name="listing_type" value="{{ tried.type }}">
+          <button type="submit" style="background:none;border:none;padding:0;color:inherit;text-decoration:underline;cursor:pointer;font:inherit;">Post it as a real listing for {{ tried_unit.name }}</button>
+        </form>
+        {% else %}
+        <a href="{{ url_for('register_unit', material=tried.material, qty_kg=tried.qty_kg|int, listing_type=tried.type) }}">Post it as a real listing</a>
+        {% endif %}
+      </p>
+      {% else %}
+      <span class="followup">{{ tried.reason }}</span>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<section>
+  <h2>Or upload a photo instead</h2>
+  <div class="card-body">
+    <p class="muted">Not everyone finds typing a clear description easy &mdash; point a phone camera at the waste pile instead. A trained image classifier reads the photo's color/texture and guesses a material family + a rough quantity range, the same auto-fill path as the text parser above.</p>
+    <form method="POST" enctype="multipart/form-data" class="simulate-form">
+      <div class="simulate-field simulate-field-sm">
+        <label for="photo_unit_id">Simulating as</label>
+        <select id="photo_unit_id" name="photo_unit_id">
+          {% for u in units %}
+          <option value="{{ u.id }}" {% if u.id == photo_tried_unit_id %}selected{% endif %}>{{ u.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="simulate-field simulate-field-lg">
+        <label for="photo">Photo of the waste</label>
+        <input type="file" id="photo" name="photo" accept="image/*" required>
+      </div>
+      <button type="submit" class="submit btn-inline">Classify photo</button>
+    </form>
+
+    {% if photo_tried %}
+    <div class="simulate-result">
+      <p class="muted simulate-result-label">Classified result:</p>
+      {% if photo_tried.ok %}
+      <span class="ok-badge">WASTE &middot; {{ photo_tried.family_label }} &middot; ~{{ photo_tried.qty_kg_low }}&ndash;{{ photo_tried.qty_kg_high }}kg</span>
+      <span class="status-badge status-info" title="Read by a trained image classifier (RandomForest over color/texture features) -- see photo_classifier.py for the honest scope note on synthetic training data">AI parsed (photo) &middot; {{ (photo_tried.confidence * 100)|round|int }}%</span>
+      {% if photo_tried.material_options|length > 1 %}
+      <p class="muted" style="margin-top:6px;">Best guess: <b>{{ photo_tried.material.replace('_',' ') }}</b> &mdash; other materials that can look similar in a photo: {{ photo_tried.material_options[1:]|join(', ')|replace('_',' ') }}.</p>
+      {% endif %}
+      <p class="muted">{{ photo_tried.note }}</p>
+      <p class="muted simulate-result-followup">
+        Looks right?
+        {% if photo_tried_unit %}
+        <form method="POST" action="{{ url_for('listings_quick_post') }}" style="display:inline;">
+          <input type="hidden" name="unit_id" value="{{ photo_tried_unit.id }}">
+          <input type="hidden" name="material" value="{{ photo_tried.material }}">
+          <input type="hidden" name="qty_kg" value="{{ photo_tried.qty_kg_estimate }}">
+          <input type="hidden" name="listing_type" value="waste">
+          <button type="submit" style="background:none;border:none;padding:0;color:inherit;text-decoration:underline;cursor:pointer;font:inherit;">Post it as a real listing for {{ photo_tried_unit.name }}</button>
+        </form>
+        (posts the estimated quantity shown above -- edit it afterward from the unit's listings if the photo's guess was off)
+        {% else %}
+        <a href="{{ url_for('register_unit', material=photo_tried.material, qty_kg=photo_tried.qty_kg_estimate, listing_type='waste') }}">Post it as a real listing</a> (confirm the exact quantity there).
+        {% endif %}
+      </p>
+      {% else %}
+      <span class="followup">{{ photo_tried.reason }}</span>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<section>
+  <h2>Simulated inbound messages</h2>
+  <div class="card-body">
+    {% if whatsapp_results %}
+    <table>
+      <thead><tr><th>Unit</th><th>Message received</th><th>Parsed result</th></tr></thead>
+      <tbody>
+      {% for r in whatsapp_results %}
+      <tr>
+        <td>{{ r.unit_name if r.ok else r.unit_id }}</td>
+        <td class="muted">&ldquo;{{ r.raw_text }}&rdquo;</td>
+        {% if r.ok %}
+        <td>
+          <span class="ok-badge">{{ r.type|upper }} {{ r.qty_kg|int }}kg {{ r.material.replace('_',' ') }}</span>
+          {% if r.material_method in ('ml', 'muril') or r.type_method == 'ml' %}
+          <span class="status-badge status-info" title="Read by trained models, not a fixed keyword list">AI</span>
+          {% endif %}
+        </td>
+        {% else %}
+        <td><span class="followup">{{ r.reason }}</span></td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">📨</div>
+      <h3>No messages simulated yet</h3>
+      <p>Try the parser above &mdash; every message you test will show up here with its parsed result.</p>
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,236 @@
+{% extends "auth_layout.html" %}
+{% block title %}Create Account — SymbioLink AI{% endblock %}
+
+{% block content %}
+<div class="auth-wrap">
+
+  {% if error %}
+  <div class="confirm confirm-error" style="margin-bottom:18px;">
+    <h3>&#9888; Couldn&rsquo;t create your account</h3>
+    <p>{{ error }}</p>
+  </div>
+  {% endif %}
+
+  <div class="auth-card">
+
+    <div class="auth-visual">
+      <svg class="auth-skyline" viewBox="0 0 600 260" preserveAspectRatio="xMidYMax meet" aria-hidden="true">
+        <path class="skyline-flow" d="M130,168 C185,112 225,112 278,152"></path>
+        <path class="skyline-flow" d="M362,150 C408,102 438,102 476,148"></path>
+        <g class="skyline-building">
+          <rect x="40" y="160" width="90" height="70" rx="3"></rect>
+          <rect x="58" y="120" width="14" height="42" rx="2"></rect>
+          <circle class="skyline-puff" cx="65" cy="107" r="7"></circle>
+          <circle class="skyline-puff" cx="77" cy="94" r="5.5"></circle>
+        </g>
+        <g class="skyline-building">
+          <rect x="270" y="130" width="26" height="100" rx="13"></rect>
+          <rect x="304" y="150" width="26" height="80" rx="13"></rect>
+          <rect x="250" y="200" width="110" height="30" rx="3"></rect>
+        </g>
+        <g class="skyline-building">
+          <polyline points="470,150 530,118 590,150"></polyline>
+          <rect x="470" y="150" width="120" height="80" rx="3"></rect>
+          <rect x="500" y="186" width="26" height="44"></rect>
+        </g>
+      </svg>
+      <div class="mark">SL</div>
+      <h2>Every kilogram of waste has a buyer somewhere in your cluster.</h2>
+      <p>Create an account to list what you produce, get matched with nearby units, and manage every order in one place.</p>
+
+      <ul class="auth-points">
+        <li>
+          <span class="pt-ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+          </span>
+          Free to list your waste materials
+        </li>
+        <li>
+          <span class="pt-ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+          </span>
+          Get matched with nearby buyers
+        </li>
+        <li>
+          <span class="pt-ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><polyline points="9 12 11 14 15 10"></polyline></svg>
+          </span>
+          Verified trust scores across the cluster
+        </li>
+      </ul>
+    </div>
+
+    <div class="auth-form">
+      <h1>Create your account</h1>
+      <p class="lead">Takes less than a minute to get started.</p>
+
+      <form method="POST" id="registerForm">
+        <label for="username">Username</label>
+        <div class="field-box">
+          <span class="field-box-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+          </span>
+          <input type="text" id="username" name="username" required placeholder="Choose a username" autocomplete="username" value="{{ form_values.username if form_values else '' }}">
+        </div>
+
+        <label for="company_name">Company / unit name</label>
+        <div class="field-box">
+          <span class="field-box-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 9h18"></path><path d="M8 4v5"></path></svg>
+          </span>
+          <input type="text" id="company_name" name="company_name" required placeholder="e.g. Ashoka Metal Works" autocomplete="organization" value="{{ form_values.company_name if form_values else '' }}">
+        </div>
+
+        <label for="category">Category</label>
+        <select id="category" name="category" required>
+          <option value="" disabled {% if not form_values or not form_values.category %}selected{% endif %}>Select a category</option>
+          {% for c in categories %}
+          <option value="{{ c }}" {% if form_values and form_values.category == c %}selected{% endif %}>{{ c|capitalize }}</option>
+          {% endfor %}
+          <option value="other" {% if form_values and form_values.category == 'other' %}selected{% endif %}>Other</option>
+        </select>
+
+        <label for="email">Email</label>
+        <div class="field-box">
+          <span class="field-box-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22 6 12 13 2 6"></polyline></svg>
+          </span>
+          <input type="email" id="email" name="email" required placeholder="your@email.com" autocomplete="email" value="{{ form_values.email if form_values else '' }}">
+        </div>
+
+        <label for="password">Password</label>
+        <div class="field-box">
+          <span class="field-box-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+          </span>
+          <input type="password" id="password" name="password" required placeholder="Create a password" autocomplete="new-password">
+          <button type="button" class="password-toggle" data-toggle-for="password" aria-label="Show password" title="Show password">
+            <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            <svg class="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a18.6 18.6 0 0 1 4.22-5.06M9.9 4.24A10.4 10.4 0 0 1 12 4c7 0 11 8 11 8a18.6 18.6 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+          </button>
+        </div>
+        <div class="caps-lock-hint" id="capsLockHint">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 L2 12 h6 v8 h8 v-8 h6 Z"></path></svg>
+          Caps Lock is on
+        </div>
+        <div class="pw-strength" id="pwStrength" hidden>
+          <div class="pw-strength-track">
+            <div class="pw-strength-seg" data-seg="0"></div>
+            <div class="pw-strength-seg" data-seg="1"></div>
+            <div class="pw-strength-seg" data-seg="2"></div>
+            <div class="pw-strength-seg" data-seg="3"></div>
+          </div>
+          <div class="pw-strength-label" id="pwStrengthLabel"></div>
+        </div>
+
+        <label for="confirm_password">Confirm password</label>
+        <div class="field-box">
+          <span class="field-box-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+          </span>
+          <input type="password" id="confirm_password" name="confirm_password" required placeholder="Confirm your password" autocomplete="new-password">
+          <button type="button" class="password-toggle" data-toggle-for="confirm_password" aria-label="Show password" title="Show password">
+            <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            <svg class="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a18.6 18.6 0 0 1 4.22-5.06M9.9 4.24A10.4 10.4 0 0 1 12 4c7 0 11 8 11 8a18.6 18.6 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+          </button>
+        </div>
+        <div class="pw-match-hint" id="pwMatchHint" hidden></div>
+
+        <button type="submit" class="submit">
+          Create account
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+        </button>
+      </form>
+
+      <p class="muted" style="margin-top:16px; text-align:center;">
+        Already have an account? <a href="{{ url_for('login') }}" class="row-link">Sign in here</a>
+      </p>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  (function () {
+    // Show/hide toggles for both password fields
+    document.querySelectorAll('.password-toggle[data-toggle-for]').forEach(function (btn) {
+      var input = document.getElementById(btn.getAttribute('data-toggle-for'));
+      if (!input) return;
+      btn.addEventListener('click', function () {
+        var showing = input.type === 'text';
+        input.type = showing ? 'password' : 'text';
+        btn.classList.toggle('is-visible', !showing);
+        btn.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+        btn.setAttribute('title', showing ? 'Show password' : 'Hide password');
+        input.focus();
+      });
+    });
+
+    // Caps Lock hint (password field only)
+    var pwd = document.getElementById('password');
+    var capsHint = document.getElementById('capsLockHint');
+    if (pwd && capsHint) {
+      var checkCaps = function (e) {
+        if (typeof e.getModifierState !== 'function') return;
+        capsHint.classList.toggle('show', e.getModifierState('CapsLock'));
+      };
+      pwd.addEventListener('keydown', checkCaps);
+      pwd.addEventListener('keyup', checkCaps);
+      pwd.addEventListener('blur', function () { capsHint.classList.remove('show'); });
+    }
+
+    // Password strength meter
+    var strengthWrap = document.getElementById('pwStrength');
+    var strengthLabel = document.getElementById('pwStrengthLabel');
+    var segs = strengthWrap ? strengthWrap.querySelectorAll('.pw-strength-seg') : [];
+    var levels = ['weak', 'fair', 'good', 'strong'];
+
+    function scorePassword(value) {
+      if (!value) return -1;
+      var score = 0;
+      if (value.length >= 8) score++;
+      if (value.length >= 12) score++;
+      if (/[A-Z]/.test(value) && /[a-z]/.test(value)) score++;
+      if (/[0-9]/.test(value)) score++;
+      if (/[^A-Za-z0-9]/.test(value)) score++;
+      return Math.min(score, 4);
+    }
+
+    if (pwd && strengthWrap) {
+      pwd.addEventListener('input', function () {
+        var value = pwd.value;
+        if (!value) { strengthWrap.hidden = true; return; }
+        strengthWrap.hidden = false;
+        var score = scorePassword(value);
+        var levelIdx = Math.max(0, Math.ceil(score / 1.25) - 1);
+        levelIdx = Math.min(levelIdx, 3);
+        var filledCount = score === 0 ? 1 : score;
+        segs.forEach(function (seg, i) {
+          seg.className = 'pw-strength-seg';
+          if (i < filledCount) seg.classList.add('filled-' + levels[levelIdx]);
+        });
+        strengthLabel.textContent = value.length < 8 ? 'Too short — use 8+ characters' :
+          ({ weak: 'Weak', fair: 'Fair', good: 'Good', strong: 'Strong' })[levels[levelIdx]];
+        strengthLabel.className = 'pw-strength-label ' + (value.length < 8 ? 'weak' : levels[levelIdx]);
+      });
+    }
+
+    // Live confirm-password match indicator
+    var confirmPwd = document.getElementById('confirm_password');
+    var matchHint = document.getElementById('pwMatchHint');
+    function checkMatch() {
+      if (!confirmPwd.value) { matchHint.hidden = true; return; }
+      matchHint.hidden = false;
+      var matches = pwd.value === confirmPwd.value;
+      matchHint.className = 'pw-match-hint ' + (matches ? 'match' : 'no-match');
+      matchHint.innerHTML = matches
+        ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Passwords match'
+        : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg> Passwords don’t match';
+    }
+    if (pwd && confirmPwd && matchHint) {
+      confirmPwd.addEventListener('input', checkMatch);
+      pwd.addEventListener('input', function () { if (confirmPwd.value) checkMatch(); });
+    }
+  })();
+</script>
+{% endblock %}

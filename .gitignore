@@ -1,0 +1,50 @@
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Python bytecode/cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Secrets -- never commit real credentials
+.env
+
+# Local SQLite/instance data (dev/test artifacts, not source)
+instance/
+
+# Trained ML artifacts ARE committed for this deploy (see train_ml_models.py
+# to regenerate) -- a fresh Render build has no way to run the training
+# script itself (no historical order data yet), so shipping the .joblib
+# files is what makes the "5 real trained ML models" the app advertises
+# actually be the ones running in production, instead of silently falling
+# back to the untrained heuristics ml_models.py uses when a file is missing.
+
+# Editor/OS cruft
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Test/coverage output
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node (any node_modules anywhere -- mobile/ React Native app, and any
+# locally-synced Claude Code skill that happens to bundle its own tooling,
+# e.g. .claude/skills/*/node_modules/). These are local tool dependencies,
+# not part of the deployed app, and can contain symlinks (npm's .bin/
+# shims) that Windows' git chokes on with "Function not implemented" when
+# added from a drive/filesystem that doesn't support them -- excluding the
+# whole directory sidesteps that entirely rather than fighting it file by
+# file.
+node_modules/
+mobile/.expo/
+
+# Claude Code's local synced skills/config -- editor tooling, not app source.
+.claude/
+
+# Scratch folder used for staged deletions during cleanup
+_to_delete/

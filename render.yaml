@@ -1,0 +1,60 @@
+# Render "Blueprint" -- lets Render provision the web service AND its
+# database together from one file, instead of clicking through separate
+# "New Web Service" / "New Database" screens and manually copying the
+# connection string between them. From the Render dashboard: New -> Blueprint
+# -> pick this repo -> Render reads this file and shows both resources ready
+# to create in one click.
+#
+# fromDatabase below is what actually wires the two together: Render
+# creates symbiolink-db first, then injects its real connection string into
+# the web service's DATABASE_URL environment variable automatically -- you
+# never see or copy a password by hand.
+databases:
+  - name: symbiolink-db
+    databaseName: symbiolink
+    plan: free
+
+services:
+  - type: web
+    name: symbiolink-ai
+    runtime: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120"
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: symbiolink-db
+          property: connectionString
+      # Optional integrations -- every one of these already has a working
+      # "simulation mode" fallback when unset (see whatsapp_service.py,
+      # payment_service.py, email_service.py, maps_service.py), so the app
+      # runs and demos fine with none of them filled in. Add real values
+      # later in the Render dashboard (Environment tab) any time, without a
+      # redeploy of the code itself.
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_PHONE_NUMBER
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM_ADDRESS
+        sync: false

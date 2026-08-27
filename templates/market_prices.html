@@ -1,0 +1,57 @@
+{% extends "layout.html" %}
+{% block title %}Market Prices — SymbioLink AI{% endblock %}
+{% set active = 'market_prices' %}
+{% block page_title %}Market Prices{% endblock %}
+{% block page_subtitle %}Reference byproduct vs. new-material price per material, plus real completed-order activity on the platform.{% endblock %}
+
+{% block content %}
+<section>
+  <div class="card-body">
+    {% if price_guide %}
+    <p class="muted">
+      Byproduct/new-material prices are this cluster's shared reference table, not a live market feed &mdash;
+      an honest limitation this app has always flagged. "Traded on platform" is real, though: it's pulled
+      directly from completed orders, so a material with a real track record here is exactly that &mdash; not guesswork.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Material</th>
+          <th>Byproduct price</th>
+          <th>New-material price</th>
+          <th>Saving</th>
+          <th>Completed orders</th>
+          <th>Kg traded</th>
+          <th>Total saved</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in price_guide %}
+        <tr>
+          <td>{{ row.material.replace('_',' ')|title }}</td>
+          <td class="nowrap">Rs {{ row.byproduct_price_rs }}/kg</td>
+          <td class="nowrap muted">Rs {{ row.new_material_price_rs }}/kg</td>
+          <td><span class="status-badge status-success">{{ row.saving_pct }}% cheaper</span></td>
+          <td class="nowrap">
+            {% if row.completed_orders %}{{ row.completed_orders }}{% else %}<span class="muted">&mdash;</span>{% endif %}
+          </td>
+          <td class="nowrap">
+            {% if row.total_kg_traded %}{{ "{:,.0f}".format(row.total_kg_traded) }} kg{% else %}<span class="muted">&mdash;</span>{% endif %}
+          </td>
+          <td class="nowrap">
+            {% if row.total_saving_rs %}Rs {{ "{:,.0f}".format(row.total_saving_rs) }}{% else %}<span class="muted">&mdash;</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">💰</div>
+      <h3>No materials in the price table yet</h3>
+      <p>Prices will show up here once listings exist for the cluster.</p>
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

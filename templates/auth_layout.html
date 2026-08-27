@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0a0c0f">
+<meta name="description" content="SymbioLink AI &mdash; sign in to the industrial symbiosis marketplace that turns one MSME's waste into another nearby MSME's raw material.">
+<title>{% block title %}SymbioLink AI{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<canvas id="bg-network" aria-hidden="true"></canvas>
+<div class="parallax-orbs" aria-hidden="true"><span></span><span></span><span></span></div>
+<a class="skip-link" href="#main-content">Skip to main content</a>
+
+{#
+  Standalone shell for pre-authentication pages (sign in / register) -- deliberately
+  NOT the app shell in layout.html. Sign-in/register used to extend layout.html, which
+  meant an unauthenticated visitor saw the full app sidebar (Dashboard, every Cluster
+  Engine/Marketplace nav link, etc.) wrapped around the login form -- every one of those
+  links is @login_required and would just bounce back to /login, so showing them first
+  was confusing UI, not a working navigation. This page shows literally just the sign-in
+  gate; the sidebar/nav only renders once the user is actually authenticated, inside
+  layout.html.
+#}
+<main id="main-content" class="auth-page" tabindex="-1">
+  <div class="lang-toggle" role="group" aria-label="Language" style="position: absolute; top: 24px; right: 24px;">
+    {% for code in supported_langs %}
+    <a href="{{ url_for('set_language', lang=code) }}" class="{{ 'active' if current_lang == code else '' }}">{{ lang_labels[code] }}</a>
+    {% endfor %}
+  </div>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="flash-messages auth-flash">
+      {% for category, message in messages %}
+      <div class="confirm {% if category == 'error' %}confirm-error{% endif %}">
+        <p>{{ message }}</p>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</main>
+
+<script src="{{ url_for('static', filename='motion.js') }}"></script>
+</body>
+</html>

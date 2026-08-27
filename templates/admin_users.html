@@ -1,0 +1,52 @@
+{% extends "layout.html" %}
+{% block title %}User Management — SymbioLink AI{% endblock %}
+{% set active = 'admin_users' %}
+{% block page_title %}User Management{% endblock %}
+{% block page_subtitle %}Every account registered on the platform.{% endblock %}
+{% block page_actions %}
+  <a href="{{ url_for('register') }}" class="btn primary">+ Add new user</a>
+{% endblock %}
+
+{% block content %}
+
+{% set active_count = users|selectattr('is_active')|list|length %}
+{% set admin_count = users|selectattr('role', 'equalto', 'admin')|list|length %}
+{% set unlinked_count = users|rejectattr('unit')|list|length %}
+<div class="stat-grid cols-4">
+  <div class="stat-card"><div class="val" data-count="{{ users|length }}">{{ users|length }}</div><div class="label">Total users</div></div>
+  <div class="stat-card"><div class="val" data-count="{{ active_count }}">{{ active_count }}</div><div class="label">Active</div></div>
+  <div class="stat-card"><div class="val" data-count="{{ admin_count }}">{{ admin_count }}</div><div class="label">Admins</div></div>
+  <div class="stat-card"><div class="val" data-count="{{ unlinked_count }}">{{ unlinked_count }}</div><div class="label">Not linked to a unit</div></div>
+</div>
+
+  <section>
+    <h2>All users</h2>
+    <div class="card-body">
+      {% if users %}
+      <table>
+        <thead><tr><th>User</th><th>Email</th><th>Role</th><th>Unit</th><th>Status</th><th>Created</th></tr></thead>
+        <tbody>
+        {% for user in users %}
+        <tr>
+          <td class="cell-title">{{ user.username }}</td>
+          <td class="muted">{{ user.email }}</td>
+          <td><span class="role-badge role-{{ user.role }}">{{ user.role }}</span></td>
+          <td class="muted">{{ user.unit.name if user.unit else 'Not linked' }}</td>
+          <td>{% if user.is_active %}<span class="ok-badge">Active</span>{% else %}<span class="badge-critical">Inactive</span>{% endif %}</td>
+          <td class="muted nowrap">{{ user.created_at.strftime('%Y-%m-%d') }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-icon">👥</div>
+        <h3>No users yet</h3>
+        <p>Accounts will show up here as people sign up for the platform.</p>
+        <a href="{{ url_for('register') }}" class="btn primary">+ Add new user</a>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+{% endblock %}

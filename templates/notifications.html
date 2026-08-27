@@ -1,0 +1,87 @@
+{% extends "layout.html" %}
+{% block title %}Notifications — SymbioLink AI{% endblock %}
+{% block page_title %}Notifications{% endblock %}
+{% block page_subtitle %}Full history of matches, order updates, and disputes for your company.{% endblock %}
+{% block page_actions %}
+  {% if notifications %}
+  <button type="button" class="btn" id="pageMarkAll">Mark all read</button>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+
+  {% set unread_count = notifications|rejectattr('is_read')|list|length %}
+  {% if notifications %}
+  <div class="stat-grid cols-2">
+    <div class="stat-card"><div class="val" data-count="{{ notifications|length }}">{{ notifications|length }}</div><div class="label">Total notifications</div></div>
+    <div class="stat-card{% if unread_count %} pulse-alert{% endif %}"><div class="val" data-count="{{ unread_count }}">{{ unread_count }}</div><div class="label">Unread</div></div>
+  </div>
+  {% endif %}
+
+  <section>
+    <h2>All notifications</h2>
+    <div class="card-body notif-page-list">
+      {% if notifications %}
+        {% for n in notifications %}
+        <a href="{{ n.link or '#' }}"
+           class="notif-item notif-page-item{{ '' if n.is_read else ' unread' }}"
+           data-id="{{ n.id }}">
+          <span class="notif-type-icon notif-type-{{ n.type }}">
+            {% if n.type == 'match' %}&#128279;
+            {% elif n.type == 'order' %}&#128230;
+            {% elif n.type == 'dispute' %}&#9888;
+            {% elif n.type == 'payment' %}&#128179;
+            {% else %}&#128276;
+            {% endif %}
+          </span>
+          <span class="notif-body">
+            <span class="notif-title">{{ n.title }}</span>
+            {% if n.message %}<span class="notif-message">{{ n.message }}</span>{% endif %}
+            <span class="notif-time">{{ n.created_at.strftime('%b %d, %Y · %H:%M') }}</span>
+          </span>
+          {% if not n.is_read %}<span class="notif-dot" aria-hidden="true"></span>{% endif %}
+        </a>
+        {% endfor %}
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-icon">🔔</div>
+        <h3>No notifications yet</h3>
+        <p>You'll see new matches, order updates, and dispute activity here as they happen.</p>
+        {% if not acting_as_unit %}<a href="{{ url_for('register_unit') }}" class="btn primary">Register your company</a>{% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    var markAllBtn = document.getElementById('pageMarkAll');
+    if (markAllBtn) {
+      markAllBtn.addEventListener('click', function () {
+        fetch('/notifications/read-all', {
+          method: 'POST',
+          headers: { 'X-Requested-With': 'fetch', 'Accept': 'application/json' },
+        }).then(function () {
+          document.querySelectorAll('.notif-page-item.unread').forEach(function (el) {
+            el.classList.remove('unread');
+            var dot = el.querySelector('.notif-dot');
+            if (dot) dot.remove();
+          });
+        });
+      });
+    }
+
+    document.querySelectorAll('.notif-page-item.unread').forEach(function (el) {
+      el.addEventListener('click', function () {
+        fetch('/notifications/' + el.dataset.id + '/read', {
+          method: 'POST',
+          headers: { 'X-Requested-With': 'fetch', 'Accept': 'application/json' },
+        });
+      });
+    });
+  });
+</script>
+{% endblock %}

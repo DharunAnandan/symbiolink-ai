@@ -1,0 +1,78 @@
+{% extends "layout.html" %}
+{% block title %}SymbioLink AI — Units Directory{% endblock %}
+{% set active = 'units' %}
+{% block page_title %}Units Directory{% endblock %}
+{% block page_subtitle %}All {{ units|length }} units currently in the demo cluster.{% endblock %}
+{% block page_actions %}
+  <a href="{{ url_for('register_unit') }}" class="btn primary">+ Register a listing</a>
+{% endblock %}
+
+{% block content %}
+
+{% set cat_count = units|map(attribute='category')|unique|list|length %}
+{% set listed_count = units|selectattr('id', 'in', listing_counts.keys())|list|length %}
+{% set trust_vals = trust_map.values()|list %}
+<div class="stat-grid cols-3">
+  <div class="stat-card"><div class="val" data-count="{{ units|length }}">{{ units|length }}</div><div class="label">Units in cluster</div></div>
+  <div class="stat-card"><div class="val" data-count="{{ cat_count }}">{{ cat_count }}</div><div class="label">Categories represented</div></div>
+  <div class="stat-card"><div class="val" data-count="{{ listed_count }}">{{ listed_count }}</div><div class="label">With active listings</div></div>
+</div>
+
+{% if units %}
+<div class="search-bar-container">
+  <div class="search-bar">
+    <input type="text" id="unit-filter" placeholder="Filter by company name or category&hellip;" autocomplete="off">
+  </div>
+</div>
+
+<div class="unit-grid" id="unit-grid">
+  {% for u in units %}
+  <a href="{{ url_for('unit_detail', unit_id=u.id) }}" class="unit-card" data-name="{{ u.name|lower }}" data-category="{{ u.category|lower }}">
+    <span class="cat-badge cat-{{ u.category }}">{{ u.category }}</span>
+    <div class="u-name">{{ u.name }}</div>
+    <div class="u-meta">
+      {% set tp = trust_map.get(u.id) %}
+      Trust:
+      {% if tp is not none %}
+        {% if tp >= 4 %}<span class="trust-pill trust-good"><span class="trust-dot"></span>{{ tp }}/5</span>
+        {% elif tp >= 3 %}<span class="trust-pill trust-mid"><span class="trust-dot"></span>{{ tp }}/5</span>
+        {% else %}<span class="trust-pill trust-new"><span class="trust-dot"></span>{{ tp }}/5</span>{% endif %}
+      {% endif %}
+      &middot; {{ listing_counts.get(u.id, 0) }} listing(s)
+    </div>
+  </a>
+  {% endfor %}
+</div>
+<p class="muted" id="unit-filter-empty" style="display:none; text-align:center; padding: 24px;">No units match &ldquo;<span id="unit-filter-empty-term"></span>&rdquo;.</p>
+{% else %}
+<div class="empty-state">
+  <div class="empty-icon">🏭</div>
+  <h3>No units registered yet</h3>
+  <p>Be the first to add a company to this cluster &mdash; it only takes a minute.</p>
+  <a href="{{ url_for('register_unit') }}" class="btn primary">+ Register a listing</a>
+</div>
+{% endif %}
+
+<script>
+(function () {
+  var input = document.getElementById('unit-filter');
+  if (!input) return;
+  var cards = Array.prototype.slice.call(document.querySelectorAll('#unit-grid .unit-card'));
+  var emptyMsg = document.getElementById('unit-filter-empty');
+  var emptyTerm = document.getElementById('unit-filter-empty-term');
+  input.addEventListener('input', function () {
+    var q = input.value.trim().toLowerCase();
+    var visible = 0;
+    cards.forEach(function (c) {
+      var match = !q || c.dataset.name.indexOf(q) !== -1 || c.dataset.category.indexOf(q) !== -1;
+      c.style.display = match ? '' : 'none';
+      if (match) visible++;
+    });
+    if (emptyMsg) {
+      emptyMsg.style.display = (q && visible === 0) ? 'block' : 'none';
+      if (emptyTerm) emptyTerm.textContent = input.value.trim();
+    }
+  });
+})();
+</script>
+{% endblock %}

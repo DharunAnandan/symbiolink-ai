@@ -1,0 +1,176 @@
+{% extends "auth_layout.html" %}
+{% block title %}Sign In — SymbioLink AI{% endblock %}
+
+{% block content %}
+<div class="auth-wrap">
+
+  {% if error %}
+  <div class="confirm confirm-error" style="margin-bottom:18px;">
+    <h3>&#9888; Couldn&rsquo;t sign you in</h3>
+    <p>{{ error }}</p>
+  </div>
+  {% endif %}
+
+  <div class="auth-card">
+
+    <div class="auth-visual">
+      <svg class="auth-skyline" viewBox="0 0 600 260" preserveAspectRatio="xMidYMax meet" aria-hidden="true">
+        <path class="skyline-flow" d="M130,168 C185,112 225,112 278,152"></path>
+        <path class="skyline-flow" d="M362,150 C408,102 438,102 476,148"></path>
+        <g class="skyline-building">
+          <rect x="40" y="160" width="90" height="70" rx="3"></rect>
+          <rect x="58" y="120" width="14" height="42" rx="2"></rect>
+          <circle class="skyline-puff" cx="65" cy="107" r="7"></circle>
+          <circle class="skyline-puff" cx="77" cy="94" r="5.5"></circle>
+        </g>
+        <g class="skyline-building">
+          <rect x="270" y="130" width="26" height="100" rx="13"></rect>
+          <rect x="304" y="150" width="26" height="80" rx="13"></rect>
+          <rect x="250" y="200" width="110" height="30" rx="3"></rect>
+        </g>
+        <g class="skyline-building">
+          <polyline points="470,150 530,118 590,150"></polyline>
+          <rect x="470" y="150" width="120" height="80" rx="3"></rect>
+          <rect x="500" y="186" width="26" height="44"></rect>
+        </g>
+      </svg>
+      <div class="mark">SL</div>
+      <h2>{{ t("Turn waste into raw material.") }}</h2>
+      <p>{{ t("Sign in to match, track, and manage your orders.") }}</p>
+
+      <ul class="auth-points">
+        <li>
+          <span class="pt-ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+          </span>
+          {{ t("Real-time matches") }}
+        </li>
+        <li>
+          <span class="pt-ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+          </span>
+          {{ t("Order tracking") }}
+        </li>
+        <li>
+          <span class="pt-ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>
+          </span>
+          {{ t("Waste forecasting") }}
+        </li>
+      </ul>
+    </div>
+
+    <div class="auth-form">
+      <h1>{{ t("Welcome back") }}</h1>
+      <p class="lead">{{ t("Sign in to continue to your dashboard.") }}</p>
+
+      <form method="POST">
+        <label for="username">{{ t("Username") }}</label>
+        <div class="field-box">
+          <span class="field-box-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+          </span>
+          <input type="text" id="username" name="username" required placeholder="e.g. u1 or admin" autocomplete="username">
+        </div>
+
+        <label for="password">{{ t("Password") }}</label>
+        <div class="field-box">
+          <span class="field-box-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+          </span>
+          <input type="password" id="password" name="password" required placeholder="Enter your password" autocomplete="current-password">
+          <button type="button" class="password-toggle" id="togglePassword" aria-label="Show password" title="Show password">
+            <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            <svg class="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a18.6 18.6 0 0 1 4.22-5.06M9.9 4.24A10.4 10.4 0 0 1 12 4c7 0 11 8 11 8a18.6 18.6 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+          </button>
+        </div>
+        <div class="caps-lock-hint" id="capsLockHint">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 L2 12 h6 v8 h8 v-8 h6 Z"></path></svg>
+          Caps Lock is on
+        </div>
+
+        <fieldset class="field-group">
+          <div class="radio-row">
+            <label><input type="checkbox" id="remember" name="remember"> {{ t("Remember me") }}</label>
+          </div>
+        </fieldset>
+
+        <button type="submit" class="submit">
+          {{ t("Sign in") }}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+        </button>
+      </form>
+
+      <p class="muted" style="margin-top:16px; text-align:center;">
+        {{ t("Don’t have an account?") }} <a href="{{ url_for('register') }}" class="row-link">{{ t("Register here") }}</a>
+      </p>
+
+      <div class="demo-creds">
+        <p class="dc-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="11" height="11"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          {{ t("Demo credentials") }}
+        </p>
+        <div class="dc-row" data-demo-user="admin" data-demo-pass="admin123" role="button" tabindex="0">
+          <span class="role-badge role-admin">Admin</span> <span class="price" style="font-size:12.5px;">admin / admin123</span>
+          <span class="dc-fill-hint">Click to fill &rarr;</span>
+        </div>
+        <div class="dc-row" data-demo-user="u1" data-demo-pass="demo123" role="button" tabindex="0">
+          <span class="role-badge role-unit">Unit</span> <span class="price" style="font-size:12.5px;">u1, u2, u3&hellip; / demo123</span>
+          <span class="dc-fill-hint">Click to fill &rarr;</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  (function () {
+    var toggle = document.getElementById('togglePassword');
+    var pwd = document.getElementById('password');
+    var capsHint = document.getElementById('capsLockHint');
+    if (!toggle || !pwd) return;
+
+    toggle.addEventListener('click', function () {
+      var showing = pwd.type === 'text';
+      pwd.type = showing ? 'password' : 'text';
+      toggle.classList.toggle('is-visible', !showing);
+      toggle.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+      toggle.setAttribute('title', showing ? 'Show password' : 'Hide password');
+      pwd.focus();
+    });
+
+    function checkCapsLock(e) {
+      if (!capsHint || typeof e.getModifierState !== 'function') return;
+      capsHint.classList.toggle('show', e.getModifierState('CapsLock'));
+    }
+    pwd.addEventListener('keydown', checkCapsLock);
+    pwd.addEventListener('keyup', checkCapsLock);
+    pwd.addEventListener('blur', function () { if (capsHint) capsHint.classList.remove('show'); });
+
+    // Demo-credential rows fill the form instead of just being copy-paste
+    // text -- click (or Enter/Space, since they're keyboard-focusable too)
+    // and the two fields populate with a quick highlight flash so it reads
+    // as "this actually did something," not a static reference card.
+    var userField = document.getElementById('username');
+    document.querySelectorAll('.dc-row[data-demo-user]').forEach(function (row) {
+      function fill() {
+        if (!userField) return;
+        userField.value = row.getAttribute('data-demo-user') || '';
+        pwd.value = row.getAttribute('data-demo-pass') || '';
+        [userField.closest('.field-box'), pwd.closest('.field-box')].forEach(function (box) {
+          if (!box) return;
+          box.classList.remove('just-filled');
+          void box.offsetWidth;
+          box.classList.add('just-filled');
+        });
+        userField.focus();
+      }
+      row.addEventListener('click', fill);
+      row.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fill(); }
+      });
+    });
+  })();
+</script>
+{% endblock %}

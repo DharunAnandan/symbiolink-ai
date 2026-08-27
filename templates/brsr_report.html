@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BRSR Compliance Annexure — {{ report.unit.name }} — SymbioLink AI</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    color: #14181f; margin: 0; padding: 0; background: #eef0f2;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .page { max-width: 860px; margin: 32px auto; background: #ffffff; padding: 44px 52px; border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,0.08); }
+
+  .toolbar { max-width: 860px; margin: 0 auto 12px; display: flex; justify-content: flex-end; gap: 10px; }
+  .toolbar button, .toolbar a {
+    font-size: 13px; font-weight: 700; padding: 9px 16px; border-radius: 9px; cursor: pointer;
+    border: 1.5px solid #cfd4da; background: #ffffff; color: #14181f; text-decoration: none;
+  }
+  .toolbar .primary { background: #16a34a; border-color: transparent; color: #ffffff; }
+
+  .letterhead { display: flex; align-items: center; justify-content: space-between; padding-bottom: 18px; border-bottom: 2px solid #14181f; margin-bottom: 26px; }
+  .brand { display: flex; align-items: center; gap: 11px; }
+  .brand .mark {
+    width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+    background: linear-gradient(135deg, #34d399, #16a34a 55%, #22d3ee);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 13px; color: #ffffff;
+  }
+  .brand .name { font-weight: 800; font-size: 16px; letter-spacing: -0.01em; }
+  .brand .sub { font-size: 10.5px; color: #6b7280; font-weight: 600; }
+  .letterhead .meta { text-align: right; font-size: 11.5px; color: #6b7280; }
+  .letterhead .meta strong { display: block; color: #14181f; font-size: 13px; margin-bottom: 2px; }
+
+  .title-row { margin-bottom: 6px; }
+  .title-row h1 { margin: 0; font-size: 23px; letter-spacing: -0.01em; }
+  .title-row .subtitle { font-size: 13px; color: #6b7280; margin-top: 4px; }
+
+  .company-strip { display: flex; flex-wrap: wrap; gap: 22px; margin: 18px 0 4px; padding: 14px 16px; background: #f7f8f9; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 12.5px; }
+  .company-strip div strong { display: block; font-size: 13px; color: #14181f; }
+  .company-strip div span { color: #6b7280; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; }
+
+  .section-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: #9ca3af; font-weight: 700; margin: 28px 0 12px; }
+  .section-label:first-of-type { margin-top: 24px; }
+  .principle-tag { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 999px; font-size: 9.5px; font-weight: 700; background: #dcf0e5; color: #166534; vertical-align: 1px; text-transform: none; letter-spacing: 0; }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 6px; }
+  .stat-box { background: #f7f8f9; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 16px; }
+  .stat-box .num { font-size: 20px; font-weight: 800; color: #14181f; }
+  .stat-box .label { font-size: 10.5px; color: #6b7280; margin-top: 3px; }
+
+  .note { border-radius: 10px; padding: 12px 16px; font-size: 12px; margin: 18px 0; }
+  .note.info { background: #dcf0e5; color: #166534; }
+  .note.caveat { background: #fef3c7; color: #92400e; }
+
+  table.brsr { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+  table.brsr th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: #9ca3af; font-weight: 700; padding: 8px 0; border-bottom: 1.5px solid #14181f; }
+  table.brsr td { padding: 9px 0; font-size: 12px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+  table.brsr th:last-child, table.brsr td:last-child,
+  table.brsr th:nth-last-child(2), table.brsr td:nth-last-child(2) { text-align: right; }
+  .role-seller { color: #047857; font-weight: 600; }
+  .role-buyer { color: #0e7490; font-weight: 600; }
+  .mono { font-variant-numeric: tabular-nums; color: #6b7280; }
+
+  .empty-state { padding: 22px 0; color: #6b7280; font-size: 12.5px; }
+
+  .footer { margin-top: 30px; padding-top: 14px; border-top: 1px solid #e5e7eb; font-size: 10.5px; color: #9ca3af; text-align: center; }
+
+  @media print {
+    body { background: #fff; }
+    .toolbar { display: none; }
+    .page { box-shadow: none; margin: 0; border-radius: 0; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="toolbar">
+    <a href="{{ url_for('dashboard') }}">&larr; Back to dashboard</a>
+    <button class="primary" onclick="window.print()">Print / Save as PDF</button>
+  </div>
+
+  <div class="page">
+    <div class="letterhead">
+      <div class="brand">
+        <div class="mark">SL</div>
+        <div>
+          <div class="name">SymbioLink AI</div>
+          <div class="sub">Industrial Symbiosis Network</div>
+        </div>
+      </div>
+      <div class="meta"><strong>BRSR Compliance Annexure</strong>Generated {{ report.generated_at }}</div>
+    </div>
+
+    <div class="title-row">
+      <h1>Environmental Performance Annexure <span class="principle-tag">BRSR Principle 6</span></h1>
+      <div class="subtitle">Waste management &amp; GHG emissions avoided — {{ report.reporting_label }}</div>
+    </div>
+
+    <div class="company-strip">
+      <div><span>Reporting entity</span><strong>{{ report.unit.name }}</strong></div>
+      <div><span>Category</span><strong>{{ report.unit.category|capitalize }}</strong></div>
+      <div><span>Unit ID</span><strong>{{ report.unit.id }}</strong></div>
+      <div><span>Verified transactions</span><strong>{{ report.indicators.verified_transaction_count }}</strong></div>
+    </div>
+
+    <div class="note info">
+      Prepared for supply-chain ESG disclosure to a large buyer under SEBI's BRSR framework (Principle 6 —
+      environment). Every figure below is derived from this unit's own completed, two-way-rated exchanges on
+      SymbioLink AI — a dated, verifiable audit trail, not a self-reported estimate.
+    </div>
+
+    <div class="section-label">Principle 6 — Environment: waste &amp; emissions indicators</div>
+    <div class="stat-grid">
+      <div class="stat-box"><div class="num">{{ "{:,.0f}".format(report.indicators.waste_diverted_from_landfill_kg) }} kg</div><div class="label">Waste diverted from landfill (as supplier)</div></div>
+      <div class="stat-box"><div class="num">{{ "{:,.0f}".format(report.indicators.waste_recovered_reused_kg) }} kg</div><div class="label">Recycled/reused material sourced (as buyer)</div></div>
+      <div class="stat-box"><div class="num">{{ "{:,.2f}".format(report.indicators.total_waste_managed_tonnes) }} t</div><div class="label">Total waste responsibly managed</div></div>
+      <div class="stat-box"><div class="num">{{ "{:,.2f}".format(report.indicators.ghg_avoided_tco2e) }} tCO2e</div><div class="label">GHG emissions avoided</div></div>
+    </div>
+    <div class="stat-grid" style="margin-top: 14px;">
+      <div class="stat-box"><div class="num">{{ report.indicators.verified_transaction_count }}</div><div class="label">Verified exchanges (completed &amp; rated)</div></div>
+      <div class="stat-box"><div class="num">{{ report.indicators.as_seller_count }}</div><div class="label">As waste supplier</div></div>
+      <div class="stat-box"><div class="num">{{ report.indicators.as_buyer_count }}</div><div class="label">As recycled-input buyer</div></div>
+      <div class="stat-box"><div class="num">{{ "{:,.1f}".format(report.indicators.ghg_avoided_kg_co2e) }} kg</div><div class="label">GHG avoided (kg CO2e)</div></div>
+    </div>
+
+    {% if report.material_breakdown %}
+    <div class="section-label">Waste stream breakdown</div>
+    <table class="brsr">
+      <thead><tr><th>Material</th><th>Verified transactions</th><th>Quantity</th><th>CO2e avoided</th></tr></thead>
+      <tbody>
+        {% for row in report.material_breakdown %}
+        <tr>
+          <td>{{ row.material|replace('_', ' ')|capitalize }}</td>
+          <td class="mono">{{ row.count }}</td>
+          <td>{{ "{:,.0f}".format(row.qty_kg) }} kg</td>
+          <td>{{ "{:,.1f}".format(row.co2_saved_kg) }} kg</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    <div class="section-label">Evidence — completed &amp; rated exchanges</div>
+    {% if report.evidence %}
+    <table class="brsr">
+      <thead><tr><th>Order</th><th>Date</th><th>Role</th><th>Counterparty</th><th>Material</th><th>Qty</th></tr></thead>
+      <tbody>
+        {% for row in report.evidence %}
+        <tr>
+          <td class="mono">{{ row.order_id }}</td>
+          <td class="mono">{{ row.date }}</td>
+          <td class="{{ 'role-seller' if 'seller' in row.role else 'role-buyer' }}">{{ row.role }}</td>
+          <td>{{ row.counterparty }}</td>
+          <td>{{ row.material|replace('_', ' ') }}</td>
+          <td>{{ "{:,.0f}".format(row.qty_kg) }} kg</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">No completed, rated exchanges yet — this annexure will populate automatically as orders are placed and completed through SymbioLink AI.</div>
+    {% endif %}
+
+    <div class="note caveat">
+      <strong>Scope note:</strong> CO2e-avoided figures use the platform's published reference emission factors
+      (data.py's <code>CO2_FACTOR_KG_PER_KG</code>), which are typical published LCA-range averages per material
+      family, not a certified life-cycle assessment for this specific transaction. This annexure is generated
+      from SymbioLink AI's own transaction ledger and is intended as supporting evidence for a buyer's supplier
+      ESG review, not a substitute for third-party assurance where that is separately required.
+    </div>
+
+    <div class="footer">
+      SymbioLink AI &middot; Maps to SEBI BRSR Principle 6 (Environment) reporting categories
+    </div>
+  </div>
+
+</body>
+</html>

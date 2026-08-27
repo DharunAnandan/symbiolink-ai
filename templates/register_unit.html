@@ -1,0 +1,323 @@
+{% extends "layout.html" %}
+{% block title %}SymbioLink AI — Register a Listing{% endblock %}
+{% set active = 'register' %}
+{% block page_title %}Register a Listing{% endblock %}
+{% block page_subtitle %}Tell the cluster what you have or what you need &mdash; matches are found automatically.{% endblock %}
+{% block page_actions %}
+  <a href="{{ url_for('search') }}" class="btn primary">Search marketplace</a>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-lg">
+
+  {% if confirmation %}
+  <div class="confirm">
+    <h3>&#10003; Listing posted for {{ confirmation.unit.name }}</h3>
+    <p>{{ confirmation.listing.type|upper }}: {{ confirmation.listing.qty_kg|int }}kg of {{ confirmation.listing.material.replace('_',' ') }}</p>
+    {% if confirmation.new_matches %}
+    <p class="muted">Matches found right away:</p>
+    {% for m in confirmation.new_matches %}
+    <p class="match-line">&bull; {{ m.from }} &rarr; {{ m.to }} ({{ m.material.replace('_',' ') }}, est. saving &#8377;{{ "{:,.0f}".format(m.saving_rs) }})</p>
+    {% endfor %}
+    {% else %}
+    <p class="muted">No direct match within the transport radius yet &mdash; it'll surface as soon as a compatible listing appears nearby, and the predictive layer starts learning this unit's pattern from here.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <form method="POST" id="register-unit-form">
+      {% if acting_as_unit %}
+      <div class="confirm" style="margin-bottom:18px;">
+        <p>Posting as <strong>{{ acting_as_unit.name }}</strong> &mdash; this listing goes under your own company automatically.</p>
+      </div>
+      {% else %}
+      <label for="company_name">Company / unit name</label>
+      <div class="field-box">
+        <span class="field-box-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 9h18"></path><path d="M8 4v5"></path></svg>
+        </span>
+        <input type="text" id="company_name" name="company_name" required placeholder="e.g. Ashoka Metal Works" autocomplete="organization">
+      </div>
+
+      <label for="category">Category</label>
+      <select id="category" name="category" required>
+        {% for c in categories %}<option value="{{ c }}">{{ c|capitalize }}</option>{% endfor %}
+        <option value="other">Other</option>
+      </select>
+
+      <label for="phone">Phone (optional, WhatsApp-style contact)</label>
+      <div class="field-box">
+        <span class="field-box-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+        </span>
+        <input type="text" id="phone" name="phone" placeholder="+91-90000-00000" autocomplete="tel">
+      </div>
+
+      <label for="email">Email (optional &mdash; order &amp; match notifications go here)</label>
+      <div class="field-box" id="email-field-box">
+        <span class="field-box-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+        </span>
+        <input type="email" id="email" name="email" placeholder="contact@yourcompany.com" autocomplete="email">
+      </div>
+      <div class="pw-match-hint" id="email-hint" style="display:none;"></div>
+      {% endif %}
+
+      <fieldset class="field-group">
+        <legend>This listing is a</legend>
+        <div class="radio-row">
+          <label><input type="radio" name="listing_type" value="waste" {% if prefill_listing_type != 'need' %}checked{% endif %}> Waste I want to give away / sell cheap</label>
+          <label><input type="radio" name="listing_type" value="need" {% if prefill_listing_type == 'need' %}checked{% endif %}> Material I need to buy cheap</label>
+        </div>
+      </fieldset>
+
+      {% if prefill_material %}
+      <p class="muted" style="margin-top:-4px;">Pre-filled from the Access &amp; Listing preview &mdash; double-check before posting.</p>
+      {% endif %}
+
+      <label for="material-input">Material</label>
+      <div class="combo" id="material-combo">
+        <input type="text" name="material" id="material-input" required placeholder="e.g. metal shavings" autocomplete="off" value="{{ prefill_material.replace('_',' ') if prefill_material else '' }}">
+        <button type="button" class="combo-toggle" aria-label="Show material list">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+        <div class="combo-list" id="material-suggestions"></div>
+      </div>
+      <p class="muted">Pick from the list if it matches, or type a new material &mdash; it'll be added with a starter reference price.</p>
+
+      <label for="qty_kg">Quantity (kg)</label>
+      <div class="field-box">
+        <span class="field-box-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 2h11l3.5 7-9 13L3 9z"></path><path d="M3 9h18"></path></svg>
+        </span>
+        <input type="number" id="qty_kg" name="qty_kg" min="1" step="1" required placeholder="e.g. 150" value="{{ prefill_qty_kg }}">
+        <span class="qty-suffix">kg</span>
+      </div>
+
+      <!-- Time window fields for waste listings -->
+      <div id="waste-time-fields" style="display: none;">
+        <label for="available_from">Available from (optional)</label>
+        <div class="field-box">
+          <span class="field-box-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+          </span>
+          <input type="date" id="available_from" name="available_from">
+        </div>
+
+        <label for="available_until">Available until (optional)</label>
+        <div class="field-box">
+          <span class="field-box-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+          </span>
+          <input type="date" id="available_until" name="available_until">
+        </div>
+        <div class="pw-match-hint" id="date-range-hint" style="display:none;"></div>
+      </div>
+
+      <!-- Time window fields for need listings -->
+      <div id="need-time-fields" style="display: none;">
+        <label for="need_deadline">Needed by (optional)</label>
+        <div class="field-box">
+          <span class="field-box-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+          </span>
+          <input type="date" id="need_deadline" name="need_deadline">
+        </div>
+        <div class="pw-match-hint" id="deadline-hint" style="display:none;"></div>
+      </div>
+
+      <button type="submit">Post listing</button>
+    </form>
+  </div>
+</div>
+
+<script>
+(function () {
+  var materials = {{ materials|tojson }}.map(function (m) { return m.replace(/_/g, ' '); });
+  var combo = document.getElementById('material-combo');
+  var input = document.getElementById('material-input');
+  var toggle = combo.querySelector('.combo-toggle');
+  var list = document.getElementById('material-suggestions');
+
+  function render(filterText) {
+    var q = (filterText || '').trim().toLowerCase();
+    var matches = materials.filter(function (m) { return !q || m.toLowerCase().indexOf(q) !== -1; });
+    list.innerHTML = '';
+    if (!matches.length) {
+      var empty = document.createElement('div');
+      empty.className = 'combo-empty';
+      empty.textContent = 'No match — this will be posted as a new material.';
+      list.appendChild(empty);
+      return;
+    }
+    matches.forEach(function (m) {
+      var opt = document.createElement('div');
+      opt.className = 'combo-option';
+      opt.textContent = m;
+      opt.addEventListener('mousedown', function (e) {
+        e.preventDefault();
+        input.value = m;
+        close();
+      });
+      list.appendChild(opt);
+    });
+  }
+
+  function open() { render(input.value); combo.classList.add('open'); }
+  function close() { combo.classList.remove('open'); }
+
+  input.addEventListener('focus', open);
+  input.addEventListener('input', open);
+  toggle.addEventListener('click', function () {
+    if (combo.classList.contains('open')) { close(); } else { input.focus(); open(); }
+  });
+  document.addEventListener('click', function (e) {
+    if (!combo.contains(e.target)) close();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') close();
+  });
+
+  // Show/hide time window fields based on listing type
+  var listingTypeRadios = document.querySelectorAll('input[name="listing_type"]');
+  var wasteTimeFields = document.getElementById('waste-time-fields');
+  var needTimeFields = document.getElementById('need-time-fields');
+
+  function updateTimeFields() {
+    var selectedType = document.querySelector('input[name="listing_type"]:checked').value;
+    if (selectedType === 'waste') {
+      wasteTimeFields.style.display = 'block';
+      needTimeFields.style.display = 'none';
+    } else {
+      wasteTimeFields.style.display = 'none';
+      needTimeFields.style.display = 'block';
+    }
+  }
+
+  listingTypeRadios.forEach(function(radio) {
+    radio.addEventListener('change', updateTimeFields);
+  });
+
+  // Initialize on page load - show waste fields by default since waste is checked
+  wasteTimeFields.style.display = 'block';
+  updateTimeFields();
+
+  // ---------- Email: live format validation ----------
+  // A quick "is this even shaped like an email" check as the person types,
+  // rather than only finding out after they hit submit -- input type="email"
+  // alone only validates on submit and shows a browser-native tooltip that's
+  // easy to miss, so we mirror the pw-match-hint pattern used on the
+  // register/login pages for consistent feedback here too. The field is
+  // optional, so an empty value is never flagged as invalid.
+  var emailInput = document.getElementById('email');
+  var emailBox = document.getElementById('email-field-box');
+  var emailHint = document.getElementById('email-hint');
+  var emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  function validateEmail(showValid) {
+    // Absent entirely for a returning company -- the fields are hidden, not
+    // just optional, once the listing is already known to belong to their
+    // own unit -- so there's nothing to validate.
+    if (!emailInput) return true;
+    var val = emailInput.value.trim();
+    if (!val) {
+      emailHint.style.display = 'none';
+      emailBox.classList.remove('shake-invalid');
+      return true;
+    }
+    var ok = emailPattern.test(val);
+    emailBox.classList.toggle('shake-invalid', false); // reset before re-triggering below if needed
+    if (ok) {
+      emailHint.className = 'pw-match-hint match';
+      emailHint.style.display = 'flex';
+      emailHint.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Looks good — notifications will go here.';
+    } else if (showValid) {
+      emailHint.className = 'pw-match-hint no-match';
+      emailHint.style.display = 'flex';
+      emailHint.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg> That doesn’t look like a full email address.';
+    } else {
+      emailHint.style.display = 'none';
+    }
+    return ok;
+  }
+  if (emailInput) {
+    emailInput.addEventListener('input', function () { validateEmail(false); });
+    emailInput.addEventListener('blur', function () { validateEmail(true); });
+  }
+
+  // ---------- Dates: no picking the past, plus a friendly "in N days" hint ----------
+  var todayStr = new Date().toISOString().slice(0, 10);
+  var availFrom = document.getElementById('available_from');
+  var availUntil = document.getElementById('available_until');
+  var needDeadline = document.getElementById('need_deadline');
+  [availFrom, availUntil, needDeadline].forEach(function (el) { if (el) el.min = todayStr; });
+
+  function daysFromToday(dateStr) {
+    var d = new Date(dateStr + 'T00:00:00');
+    var t = new Date(todayStr + 'T00:00:00');
+    return Math.round((d - t) / 86400000);
+  }
+  function describeDate(dateStr) {
+    var n = daysFromToday(dateStr);
+    if (n === 0) return 'today';
+    if (n === 1) return 'tomorrow';
+    if (n > 1) return 'in ' + n + ' days';
+    return 'in the past';
+  }
+
+  var dateRangeHint = document.getElementById('date-range-hint');
+  function validateDateRange(showValid) {
+    if (!availFrom.value && !availUntil.value) { dateRangeHint.style.display = 'none'; return true; }
+    var parts = [];
+    if (availFrom.value) parts.push('from ' + describeDate(availFrom.value));
+    if (availUntil.value) parts.push('until ' + describeDate(availUntil.value));
+    var ok = true;
+    if (availFrom.value && availUntil.value && availUntil.value < availFrom.value) {
+      ok = false;
+    }
+    if (!ok) {
+      dateRangeHint.className = 'pw-match-hint no-match';
+      dateRangeHint.style.display = 'flex';
+      dateRangeHint.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg> “Until” is before “from” — double-check the dates.';
+    } else {
+      dateRangeHint.className = 'pw-match-hint match';
+      dateRangeHint.style.display = 'flex';
+      dateRangeHint.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Available ' + parts.join(' ') + '.';
+    }
+    return ok;
+  }
+  [availFrom, availUntil].forEach(function (el) {
+    el.addEventListener('change', function () { validateDateRange(true); });
+  });
+
+  var deadlineHint = document.getElementById('deadline-hint');
+  needDeadline.addEventListener('change', function () {
+    if (!needDeadline.value) { deadlineHint.style.display = 'none'; return; }
+    deadlineHint.className = 'pw-match-hint match';
+    deadlineHint.style.display = 'flex';
+    deadlineHint.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Needed ' + describeDate(needDeadline.value) + '.';
+  });
+
+  // ---------- Guard the actual submit ----------
+  // Only blocks on things that are genuinely wrong (a malformed email, an
+  // "until" date before the "from" date) -- native `required` validation on
+  // the other fields still runs as normal since this only adds extra checks,
+  // it doesn't turn any of that off.
+  document.getElementById('register-unit-form').addEventListener('submit', function (e) {
+    var emailOk = validateEmail(true);
+    var datesOk = validateDateRange(true);
+    if (!emailOk) {
+      e.preventDefault();
+      emailBox.classList.remove('shake-invalid'); void emailBox.offsetWidth; emailBox.classList.add('shake-invalid');
+      emailInput.focus();
+    } else if (!datesOk) {
+      e.preventDefault();
+      var untilBox = availUntil.closest('.field-box');
+      untilBox.classList.remove('shake-invalid'); void untilBox.offsetWidth; untilBox.classList.add('shake-invalid');
+      availUntil.focus();
+    }
+  });
+})();
+</script>
+{% endblock %}

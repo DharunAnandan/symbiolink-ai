@@ -1,0 +1,31 @@
+{% extends "layout.html" %}
+{% block title %}Edit Listing — SymbioLink AI{% endblock %}
+{% block page_title %}Edit Listing{% endblock %}
+{% block page_subtitle %}{{ unit.name }} &middot; {{ listing.material.replace('_',' ') }}{% endblock %}
+{% block page_actions %}
+  <a href="{{ url_for('unit_detail', unit_id=unit.id) }}" class="btn">&larr; Back to profile</a>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-sm">
+  <div class="card">
+    <form method="POST">
+      <label for="listing_type_ro">Type</label>
+      {% if listing.type == 'waste' %}<input type="text" id="listing_type_ro" value="WASTE — offering" disabled>
+      {% else %}<input type="text" id="listing_type_ro" value="NEED — looking to buy" disabled>{% endif %}
+
+      <label for="listing_material_ro">Material</label>
+      <input type="text" id="listing_material_ro" value="{{ listing.material.replace('_',' ')|capitalize }}" disabled>
+
+      <label for="qty_kg">Quantity (kg)</label>
+      <input type="number" id="qty_kg" name="qty_kg" min="1" step="1" required value="{{ listing.qty_kg|int }}" autofocus>
+      <p class="muted">Update the amount available or needed &mdash; existing matches will be re-checked against the new quantity.</p>
+
+      <div class="detail-actions">
+        <button type="submit">Save changes</button>
+        <a href="{{ url_for('unit_detail', unit_id=unit.id) }}" class="btn">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
