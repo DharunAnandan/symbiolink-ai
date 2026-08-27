@@ -88,24 +88,26 @@ class TrustLedger:
 
     def record_exchange(self, from_id, to_id, rating_from_gives_to_to, rating_to_gives_to_from, order_id_str=None):
         """Both sides rate each other after a completed exchange -- persisted as
-        two TrustRating rows so the score survives a restart. order_id_str, if
-        given, is the order's public "ORD001"-style id; it's parsed back to the
-        numeric primary key so the rating rows link to the order that produced
-        them (see TrustRating.order_id in models.py)."""
-        order_id = None
-        if order_id_str and order_id_str.startswith("ORD"):
-            try:
-                order_id = int(order_id_str[3:])
-            except ValueError:
-                order_id = None
+        two TrustRating rows so the score survives a restart.
 
+        order_id_str is the order's public "ORD001"-style id from orders.py's
+        in-memory ledger -- NOT a real primary key in the `orders` table, since
+        orders.py has never actually been wired up to the Order model (that
+        table exists in models.py but nothing writes rows into it yet).
+        TrustRating.order_id is a foreign key against orders.id, so previously
+        this parsed "ORD001" -> 1 and stored *that* -- which happened to work
+        on SQLite (FK constraints aren't enforced there by default) but throws
+        an IntegrityError -> 500 on Postgres the moment a rating is submitted,
+        since no orders.id row with that value exists to reference. Always
+        leaving this column NULL avoids the crash; once real Order rows exist,
+        this can go back to linking them."""
         db.session.add(TrustRating(
             from_unit_id=from_id, to_unit_id=to_id,
-            rating=rating_from_gives_to_to, order_id=order_id,
+            rating=rating_from_gives_to_to, order_id=None,
         ))
         db.session.add(TrustRating(
             from_unit_id=to_id, to_unit_id=from_id,
-            rating=rating_to_gives_to_from, order_id=order_id,
+            rating=rating_to_gives_to_from, order_id=None,
         ))
         db.session.commit()
 
