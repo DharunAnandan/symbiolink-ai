@@ -18,7 +18,7 @@ import re
 import os
 from datetime import datetime
 
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash, abort
 from flask_login import LoginManager, login_required, login_user, logout_user, current_user
 
 # UNITS, LISTINGS, KNOWN_MATERIALS, KNOWN_CATEGORIES, add_unit, add_listing, unit_by_id,
@@ -633,6 +633,26 @@ def index():
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
     return render_template("landing.html")
+
+
+@app.route("/admin/seed-database")
+def seed_database_once():
+    """One-time DB seeding trigger for hosts (e.g. Render's free tier) that
+    don't provide shell/SSH access to run `python database_migration.py`
+    by hand. Gated by a token so a random visitor can't trigger it -- though
+    seed_all() itself is idempotent (checks for existing rows before
+    inserting each table), so even an accidental repeat call is harmless."""
+    expected = os.environ.get("SEED_TOKEN", "symbio-seed-2026-x7k9")
+    if request.args.get("token", "") != expected:
+        abort(404)
+    from database_migration import seed_all
+    seed_all()
+    return (
+        "Database seeded. Log in with admin / admin123, or any of u1..u24 / "
+        "demo123 -- or just register a brand-new company from the site's "
+        "own sign-up page.",
+        200,
+    )
 
 
 @app.route("/dashboard")
