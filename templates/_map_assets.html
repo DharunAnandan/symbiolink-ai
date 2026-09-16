@@ -1,0 +1,183 @@
+{# ---------------------------------------------------------------------------
+   Leaflet + OpenStreetMap assets, shared by every map in the app (the
+   registration picker, a company's location card, and the cluster overview).
+
+   Pinned to an exact version rather than "latest" for the same reason
+   dashboard.html pins Chart.js and matches.html pins vis-network: a silent
+   major-version bump on a CDN should never be able to break a page.
+
+   Leaflet's CSS must load before the map initialises -- without it the tiles
+   are positioned as static images and the map renders as a broken stack of
+   squares, which is the classic "my Leaflet map looks scrambled" symptom.
+
+   No API key and no billing account: OpenStreetMap's tile server is open.
+   That is also why the attribution below is not optional -- displaying it is
+   a condition of the OSM tile usage policy, so it stays on every map.
+--------------------------------------------------------------------------- #}
+<link rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin="" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
+<script>
+  /* Shared helpers, so the three map pages don't each re-declare the tile
+     layer and the category colors. */
+  window.SymbioMap = (function () {
+    /* Same categorical palette as GROUP_COLORS in app.py and the
+       .cat-<category>-tx custom properties in static/style.css, so a company's
+       pin color matches its badge color everywhere else in the product. */
+    var CATEGORY_COLORS = {
+      metal: "#1d4ed8", sugar: "#c2410c", paper: "#047857", packaging: "#a16207",
+      textile: "#be185d", chemical: "#6d28d9", food: "#b91c1c", plastic: "#475569",
+      wood: "#7c4a1e", rubber: "#3f3f46", leather: "#6b4423", electronics: "#0e7490",
+      glass: "#0369a1", agro: "#4d7c0f", other: "#4b5563"
+    };
+
+    function tileLayer() {
+      return L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        /* Required by the OSM tile usage policy -- do not remove. */
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      });
+    }
+
+    function colorFor(category) {
+      return CATEGORY_COLORS[category] || CATEGORY_COLORS.other;
+    }
+
+    /* A colored teardrop pin built from a divIcon rather than an image file:
+       it needs no extra asset request, and the fill can be driven by the
+       company's category. iconAnchor sits at the point of the drop so the pin
+       marks the exact coordinate, not the middle of the graphic. */
+    function pin(category) {
+      var color = colorFor(category);
+      return L.divIcon({
+        className: "symbio-pin",
+        html: '<svg viewBox="0 0 24 32" width="26" height="34" aria-hidden="true">' +
+              '<path d="M12 0C5.4 0 0 5.4 0 12c0 9 12 20 12 20s12-11 12-20c0-6.6-5.4-12-12-12z" ' +
+              'fill="' + color + '" stroke="#ffffff" stroke-width="2"/>' +
+              '<circle cx="12" cy="12" r="4.5" fill="#ffffff"/></svg>',
+        iconSize: [26, 34],
+        iconAnchor: [13, 34],
+        popupAnchor: [0, -30]
+      });
+    }
+
+    /* A distinct pulsing dot for "you are here", so the viewer's own position
+       never reads as another company's pin. */
+    function youAreHereIcon() {
+      return L.divIcon({
+        className: "symbio-here",
+        html: '<span class="symbio-here-dot"></span>',
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+        popupAnchor: [0, -12]
+      });
+    }
+
+    /* Great-circle distance in km -- the same formula as geo.haversine_km()
+       on the server, so the figure shown next to a route matches what the
+       backend would compute for the same two points. */
+    function haversineKm(a, b) {
+      var R = 6371.0088;
+      var toRad = function (d) { return d * Math.PI / 180; };
+      var dLat = toRad(b[0] - a[0]);
+      var dLng = toRad(b[1] - a[1]);
+      var s = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(toRad(a[0])) * Math.cos(toRad(b[0])) *
+              Math.sin(dLng / 2) * Math.sin(dLng / 2);
+      return 2 * R * Math.asin(Math.sqrt(s));
+    }
+
+    /* Ask the browser where the viewer is.
+       Wrapped so the three call sites share one set of failure messages --
+       geolocation fails often and mundanely (permission denied, no GPS
+       indoors, insecure origin) and each needs saying differently. */
+    function locate(onSuccess, onError) {
+      if (!navigator.geolocation) {
+        onError("This browser cannot share your location.");
+        return;
+      }
+      /* Browsers only expose geolocation on a secure origin. localhost counts
+         as secure, so the dev server is fine, but a LAN IP over plain http is
+         not -- worth naming, because the failure is otherwise baffling. */
+      if (!window.isSecureContext && location.hostname !== "localhost"
+          && location.hostname !== "127.0.0.1") {
+        onError("Your browser only shares location over HTTPS. Open the app on localhost or over HTTPS.");
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        function (pos) { onSuccess([pos.coords.latitude, pos.coords.longitude], pos.coords.accuracy); },
+        function (err) {
+          onError(err && err.code === 1
+            ? "Location permission denied. Allow it in your browser to use this."
+            : "Could not get your location. Try again in a moment.");
+        },
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+      );
+    }
+
+    /* Road route between two points via OSRM's public demo server.
+       No API key, but it is a courtesy service with no uptime promise -- so
+       every failure path falls back to a straight line rather than leaving
+       the viewer with nothing. The callback always receives a drawable
+       result, with `approximate` saying which kind it is. */
+    function fetchRoute(from, to, callback) {
+      var straight = {
+        coords: [from, to],
+        km: haversineKm(from, to),
+        minutes: null,
+        approximate: true
+      };
+
+      var url = "https://router.project-osrm.org/route/v1/driving/" +
+                from[1] + "," + from[0] + ";" + to[1] + "," + to[0] +
+                "?overview=full&geometries=geojson";
+
+      var done = false;
+      /* OSRM can hang; without this the "Finding route..." label would stay
+         up forever instead of degrading to the straight line. */
+      var timer = setTimeout(function () {
+        if (!done) { done = true; callback(straight); }
+      }, 8000);
+
+      fetch(url)
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+          if (done) { return; }
+          done = true;
+          clearTimeout(timer);
+          if (!data || !data.routes || !data.routes.length) { callback(straight); return; }
+          var route = data.routes[0];
+          callback({
+            /* GeoJSON is [lng, lat]; Leaflet wants [lat, lng]. */
+            coords: route.geometry.coordinates.map(function (c) { return [c[1], c[0]]; }),
+            km: route.distance / 1000,
+            minutes: route.duration / 60,
+            approximate: false
+          });
+        })
+        .catch(function () {
+          if (done) { return; }
+          done = true;
+          clearTimeout(timer);
+          callback(straight);
+        });
+    }
+
+    /* A link into OpenStreetMap's own directions page -- the escape hatch for
+       anyone who wants turn-by-turn steps rather than a line on this map. */
+    function directionsUrl(from, to) {
+      return "https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=" +
+             from[0] + "%2C" + from[1] + "%3B" + to[0] + "%2C" + to[1];
+    }
+
+    return {
+      tileLayer: tileLayer, colorFor: colorFor, pin: pin, COLORS: CATEGORY_COLORS,
+      youAreHereIcon: youAreHereIcon, haversineKm: haversineKm,
+      locate: locate, fetchRoute: fetchRoute, directionsUrl: directionsUrl
+    };
+  })();
+</script>

@@ -1,0 +1,95 @@
+{% extends "auth_layout.html" %}
+{% block title %}Sign in with a code — SymbioLink AI{% endblock %}
+
+{% block content %}
+<div class="auth-wrap">
+
+  {% if error %}
+  <div class="confirm confirm-error" style="margin-bottom:18px;">
+    <h3>&#9888; Couldn&rsquo;t send a code</h3>
+    <p>{{ error }}</p>
+  </div>
+  {% endif %}
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+      <div class="confirm {{ 'confirm-error' if category == 'error' else '' }}" style="margin-bottom:18px;">
+        <p>{{ message }}</p>
+      </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <div class="auth-card">
+
+    <div class="auth-visual">
+      <div class="mark">SL</div>
+      <h2>{{ t("No password needed.") }}</h2>
+      <p>{{ t("We'll email you a one-time code instead.") }}</p>
+
+      <ul class="auth-points">
+        <li>
+          <span class="pt-ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+          </span>
+          {{ t("Sent to your registered email") }}
+        </li>
+        <li>
+          <span class="pt-ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          </span>
+          {{ t("Expires in 10 minutes") }}
+        </li>
+        <li>
+          <span class="pt-ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+          </span>
+          {{ t("Works only once") }}
+        </li>
+      </ul>
+    </div>
+
+    <div class="auth-form">
+      <h1>{{ t("Sign in with a code") }}</h1>
+      <p class="lead">{{ t("Enter your username or email and we'll send you a code.") }}</p>
+
+      <form method="POST">
+        <label for="identifier">{{ t("Username or email") }}</label>
+        <div class="field-box">
+          <span class="field-box-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+          </span>
+          <input type="text" id="identifier" name="identifier" required autofocus
+                 placeholder="e.g. u1 or you@company.com" autocomplete="username">
+        </div>
+
+        <fieldset class="field-group">
+          <div class="radio-row">
+            <label><input type="checkbox" name="remember"> {{ t("Remember me") }}</label>
+          </div>
+        </fieldset>
+
+        <button type="submit" class="submit">
+          {{ t("Email me a code") }}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+        </button>
+      </form>
+
+      <p class="muted" style="margin-top:16px; text-align:center;">
+        <a href="{{ url_for('login') }}" class="row-link">&larr; {{ t("Sign in with a password instead") }}</a>
+      </p>
+
+      <div class="demo-creds">
+        <p class="dc-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="11" height="11"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          {{ t("Note") }}
+        </p>
+        <p class="muted" style="font-size:12px;margin:0;">
+          {{ t("The demo accounts (u1-u24, admin) use placeholder addresses that cannot receive mail. Use a password for those, or an account registered with a real email.") }}
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

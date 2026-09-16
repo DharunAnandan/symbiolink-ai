@@ -1,0 +1,187 @@
+{% extends "auth_layout.html" %}
+{% block title %}Enter your code — SymbioLink AI{% endblock %}
+
+{% block content %}
+<div class="auth-wrap">
+
+  {% if error %}
+  <div class="confirm confirm-error" style="margin-bottom:18px;">
+    <h3>&#9888; That didn&rsquo;t work</h3>
+    <p>{{ error }}</p>
+  </div>
+  {% endif %}
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+      <div class="confirm {{ 'confirm-error' if category == 'error' else '' }}" style="margin-bottom:18px;">
+        <p>{{ message }}</p>
+      </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <div class="auth-card">
+
+    <div class="auth-visual">
+      <div class="mark">SL</div>
+      <h2>{{ t("One more step.") }}</h2>
+      <p>{{ t("Enter the code from your inbox to sign in.") }}</p>
+
+      <ul class="auth-points">
+        <li>
+          <span class="pt-ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+          </span>
+          {{ t("No password needed") }}
+        </li>
+        <li>
+          <span class="pt-ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          </span>
+          {{ t("Codes expire in") }} {{ ttl_minutes }} {{ t("minutes") }}
+        </li>
+        <li>
+          <span class="pt-ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+          </span>
+          {{ t("Each code works only once") }}
+        </li>
+      </ul>
+    </div>
+
+    <div class="auth-form">
+      <h1>{{ t("Enter your code") }}</h1>
+      <p class="lead">
+        {{ t("We emailed a 6-digit code to") }}
+        <strong>{{ masked_email }}</strong>.
+      </p>
+
+      <form method="POST" id="otp-form">
+        <label for="code">{{ t("Sign-in code") }}</label>
+        <div class="field-box">
+          <span class="field-box-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M7 10h2"></path><path d="M11 10h2"></path><path d="M15 10h2"></path><path d="M7 14h10"></path></svg>
+          </span>
+          {# inputmode=numeric brings up the digit keypad on a phone, which is
+             the whole keyboard this field ever needs. autocomplete=one-time-code
+             lets iOS/Android offer the code straight from the notification. #}
+          <input type="text" id="code" name="code" required
+                 inputmode="numeric" pattern="[0-9]*" maxlength="6"
+                 autocomplete="one-time-code" autofocus
+                 placeholder="000000" class="otp-input">
+        </div>
+
+        <button type="submit" class="submit">
+          {{ t("Verify and sign in") }}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+        </button>
+      </form>
+
+      {# Resend is its own form, not a link: it changes server state (issues a
+         new code), so it must not be a GET that a prefetcher could fire. #}
+      <form method="POST" action="{{ url_for('resend_otp') }}" style="margin-top:14px;">
+        <button type="submit" class="btn btn-sm" id="resend-btn"
+                {% if resend_in > 0 %}disabled data-wait="{{ resend_in }}"{% endif %}
+                style="width:100%;">
+          {% if resend_in > 0 %}
+            {{ t("Resend code in") }} <span id="resend-count">{{ resend_in }}</span>s
+          {% else %}
+            {{ t("Send me a new code") }}
+          {% endif %}
+        </button>
+      </form>
+
+      <p class="muted" style="margin-top:16px; text-align:center;">
+        <a href="{{ url_for('login') }}" class="row-link">&larr; {{ t("Back to sign in") }}</a>
+      </p>
+
+      <div class="demo-creds">
+        <p class="dc-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="11" height="11"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          {{ t("Can't find the email?") }}
+        </p>
+        <p class="muted" style="font-size:12px;margin:0;">
+          {{ t("Check your spam folder. Requesting a new code cancels the old one.") }}
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  /* Strip anything non-numeric as it is typed: people paste codes with
+     spaces or a stray hyphen straight out of the email, and bouncing them
+     for it would be gratuitous. The server normalises too -- this is just
+     for immediate feedback. */
+  var input = document.getElementById('code');
+  var form = document.getElementById('otp-form');
+  var submitBtn = form ? form.querySelector('button[type="submit"]') : null;
+
+  /* Submit at most once.
+     The auto-submit below and a click on "Verify" (or Enter) used to be able
+     to fire together. The first request signs the user in; the second arrives
+     carrying an already-used code, and the browser follows whichever response
+     lands last -- so a successful sign-in ended on an error page. One flag,
+     checked by every path that can submit, closes that. */
+  var submitted = false;
+
+  function lockForm() {
+    submitted = true;
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Signing in...';
+    }
+    /* readOnly, not disabled: a disabled input is left out of the POST body,
+       which would submit an empty code. */
+    if (input) { input.readOnly = true; }
+  }
+
+  if (form) {
+    form.addEventListener('submit', function (e) {
+      if (submitted) { e.preventDefault(); return; }
+      lockForm();
+    });
+  }
+
+  if (input) {
+    input.addEventListener('input', function () {
+      var cleaned = this.value.replace(/\D/g, '').slice(0, 6);
+      if (cleaned !== this.value) { this.value = cleaned; }
+      /* Auto-submit on the sixth digit -- the form has exactly one field, so
+         there is nothing else to fill in and no ambiguity about intent.
+         requestSubmit() fires the submit event (and so the guard above);
+         plain submit() skips it, so it is only the fallback for old browsers
+         and is guarded by hand. */
+      if (cleaned.length === 6 && !submitted) {
+        if (typeof form.requestSubmit === 'function') {
+          form.requestSubmit();
+        } else {
+          lockForm();
+          form.submit();
+        }
+      }
+    });
+  }
+
+  /* Live countdown on the resend button so the wait is visible rather than
+     feeling like a dead control. */
+  var btn = document.getElementById('resend-btn');
+  var countEl = document.getElementById('resend-count');
+  if (btn && countEl) {
+    var left = parseInt(btn.getAttribute('data-wait'), 10) || 0;
+    var timer = setInterval(function () {
+      left -= 1;
+      if (left <= 0) {
+        clearInterval(timer);
+        btn.disabled = false;
+        btn.textContent = 'Send me a new code';
+      } else {
+        countEl.textContent = left;
+      }
+    }, 1000);
+  }
+})();
+</script>
+{% endblock %}

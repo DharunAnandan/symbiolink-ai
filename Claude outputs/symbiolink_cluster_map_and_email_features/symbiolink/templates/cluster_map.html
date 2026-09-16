@@ -1,0 +1,263 @@
+{% extends "layout.html" %}
+{% block title %}SymbioLink AI &mdash; Cluster Map{% endblock %}
+{% set active = 'map' %}
+{% block page_title %}Cluster Map{% endblock %}
+{% block page_subtitle %}Every registered industry in the cluster, on one map.{% endblock %}
+{% block page_actions %}
+  <a href="{{ url_for('units') }}" class="btn">Company list</a>
+  <a href="{{ url_for('register_unit') }}" class="btn primary">Register a unit</a>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="map-toolbar">
+    <div class="map-search">
+      <input type="text" id="unit-filter" autocomplete="off"
+             placeholder="Filter by company name...">
+    </div>
+    <select id="category-filter" style="flex:0 0 auto;width:auto;">
+      <option value="">All sectors ({{ pins|length }})</option>
+      {% for c in categories %}
+      <option value="{{ c }}">{{ c|capitalize }}</option>
+      {% endfor %}
+    </select>
+    <button type="button" class="btn btn-sm" id="locate-me">Locate me</button>
+    <button type="button" class="btn btn-sm" id="nearest-to-me" disabled
+            title="Share your location first">Nearest to me</button>
+    <button type="button" class="btn btn-sm" id="fit-all">Fit all</button>
+  </div>
+
+  <div id="cluster-map" class="map-canvas map-lg" role="application"
+       aria-label="Map of every registered industry in the cluster"></div>
+
+  <div class="route-banner" id="route-banner"></div>
+
+  <div class="map-legend">
+    {% for c in categories %}
+    <span class="map-legend-item">
+      <span class="map-legend-dot" style="background: {{ category_colors.get(c, '#4b5563') }};"></span>
+      {{ c|capitalize }}
+    </span>
+    {% endfor %}
+  </div>
+
+  <p class="map-hint" id="map-count">Showing {{ pins|length }} compan{{ 'y' if pins|length == 1 else 'ies' }}.</p>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% include "_map_assets.html" %}
+<script>
+/* ---------------------------------------------------------------------------
+   Cluster overview map.
+
+   Every registered industry as a category-coloured pin, with a name filter
+   and a sector filter. The view fits the markers' bounds rather than using a
+   fixed zoom, so the map frames the actual cluster whatever its real size --
+   a fixed zoom would either crop a spread-out cluster or leave a tight one as
+   a speck.
+--------------------------------------------------------------------------- */
+(function () {
+  var el = document.getElementById('cluster-map');
+  if (!el || typeof L === 'undefined') { return; }
+
+  var pins = {{ pins|tojson }};
+  var map = L.map(el).setView(
+    [{{ cluster_origin[0] }}, {{ cluster_origin[1] }}], {{ cluster_zoom }});
+  SymbioMap.tileLayer().addTo(map);
+
+  var layer = L.layerGroup().addTo(map);
+  var markers = [];
+
+  /* ---- Viewer position + routing --------------------------------------
+     `here` is the viewer's own coordinates once they have shared them. It
+     stays null until then, and every routing entry point checks it, so
+     "directions" can never silently draw a line from nowhere. */
+  var here = null;
+  var hereMarker = null;
+  var routeLine = null;
+  var banner = document.getElementById('route-banner');
+
+  function showBanner(html, isError) {
+    banner.innerHTML = html;
+    banner.classList.add('show');
+    banner.classList.toggle('is-error', !!isError);
+  }
+
+  function clearRoute() {
+    if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+  }
+
+  function setHere(coords) {
+    here = coords;
+    if (hereMarker) {
+      hereMarker.setLatLng(coords);
+    } else {
+      hereMarker = L.marker(coords, { icon: SymbioMap.youAreHereIcon(), zIndexOffset: 1000 })
+                    .addTo(map)
+                    .bindPopup('You are here');
+    }
+    document.getElementById('nearest-to-me').disabled = false;
+    document.getElementById('nearest-to-me').title = '';
+  }
+
+  /* Draw the route from the viewer to one company. Exposed on window because
+     the popup's button is built as an HTML string by Leaflet and so cannot
+     close over a local function. */
+  window.symbioRouteTo = function (unitId) {
+    var target = null;
+    markers.forEach(function (m) { if (m._symbio.id === unitId) { target = m._symbio; } });
+    if (!target) { return; }
+
+    function draw() {
+      showBanner('Finding the route to <strong>' + target.name + '</strong>&hellip;');
+      SymbioMap.fetchRoute(here, [target.lat, target.lng], function (result) {
+        clearRoute();
+        routeLine = L.polyline(result.coords, {
+          color: '#2563eb', weight: 5, opacity: 0.75,
+          /* A dashed line is the honest rendering for the straight-line
+             fallback: it must not look like a road you can drive. */
+          dashArray: result.approximate ? '8, 10' : null
+        }).addTo(map);
+        map.fitBounds(routeLine.getBounds().pad(0.2));
+
+        var parts = ['<span class="route-figure">' + result.km.toFixed(1) + ' km</span>',
+                     'to <strong>' + target.name + '</strong>'];
+        if (result.minutes) {
+          parts.push('<span class="route-figure">~' + Math.round(result.minutes) + ' min</span> by road');
+        }
+        if (result.approximate) {
+          parts.push('<span class="route-note">straight-line estimate &mdash; routing unavailable</span>');
+        }
+        parts.push('<a href="' + SymbioMap.directionsUrl(here, [target.lat, target.lng]) +
+                   '" target="_blank" rel="noopener">Turn-by-turn &rarr;</a>');
+        showBanner(parts.join(' '));
+      });
+    }
+
+    if (here) { draw(); return; }
+    /* First use doubles as the location prompt, so a viewer can go straight
+       from a pin to directions without hunting for "Locate me" first. */
+    showBanner('Getting your location&hellip;');
+    SymbioMap.locate(
+      function (coords) { setHere(coords); draw(); },
+      function (msg) { showBanner(msg, true); }
+    );
+  };
+
+  function popupHtml(p) {
+    var bits = [];
+    if (p.waste_count) { bits.push(p.waste_count + ' waste listing' + (p.waste_count > 1 ? 's' : '')); }
+    if (p.need_count) { bits.push(p.need_count + ' need' + (p.need_count > 1 ? 's' : '')); }
+    var meta = bits.length ? bits.join(' &middot; ') : 'No open listings';
+
+    /* The seeded demo companies have no surveyed address -- their pin is a
+       back-projection of the km grid. Saying so prevents anyone treating an
+       approximate pin as a delivery address. */
+    var approx = p.precise ? '' :
+      '<div class="map-popup-meta" style="margin-top:4px;opacity:0.8;">Approximate location</div>';
+
+    return '<div class="map-popup-title">' + p.name + '</div>' +
+           '<div class="map-popup-meta">' + p.category.charAt(0).toUpperCase() +
+           p.category.slice(1) + ' &middot; ' + meta + '</div>' + approx +
+           '<button type="button" class="map-popup-locate" ' +
+           'onclick="symbioRouteTo(\'' + p.id + '\')">Directions from me</button>' +
+           '<br><a class="map-popup-link" href="' + p.url + '">View company &rarr;</a>';
+  }
+
+  pins.forEach(function (p) {
+    var m = L.marker([p.lat, p.lng], { icon: SymbioMap.pin(p.category) })
+             .bindPopup(popupHtml(p))
+             .bindTooltip(p.name, { direction: 'top' });
+    m._symbio = p;
+    markers.push(m);
+  });
+
+  function fitTo(visible) {
+    if (!visible.length) { return; }
+    var bounds = L.latLngBounds(visible.map(function (m) { return m.getLatLng(); }));
+    /* pad() stops a single marker (or a very tight cluster) from zooming in
+       to maximum, which looks like a bug rather than a close-up. */
+    map.fitBounds(bounds.pad(0.15), { maxZoom: 16 });
+  }
+
+  var nameInput = document.getElementById('unit-filter');
+  var catSelect = document.getElementById('category-filter');
+  var countEl = document.getElementById('map-count');
+
+  function applyFilters(refit) {
+    var q = nameInput.value.trim().toLowerCase();
+    var cat = catSelect.value;
+    layer.clearLayers();
+    var visible = [];
+    markers.forEach(function (m) {
+      var p = m._symbio;
+      var okName = !q || p.name.toLowerCase().indexOf(q) !== -1;
+      var okCat = !cat || p.category === cat;
+      if (okName && okCat) { layer.addLayer(m); visible.push(m); }
+    });
+    countEl.textContent = 'Showing ' + visible.length +
+      (visible.length === 1 ? ' company.' : ' companies.');
+    if (refit) { fitTo(visible); }
+    return visible;
+  }
+
+  fitTo(markers);
+  applyFilters(false);
+
+  nameInput.addEventListener('input', function () { applyFilters(false); });
+  catSelect.addEventListener('change', function () { applyFilters(true); });
+  document.getElementById('fit-all').addEventListener('click', function () {
+    nameInput.value = '';
+    catSelect.value = '';
+    clearRoute();
+    banner.classList.remove('show');
+    fitTo(applyFilters(false));
+  });
+
+  /* ---- Locate me ------------------------------------------------------- */
+  var locateBtn = document.getElementById('locate-me');
+  locateBtn.addEventListener('click', function () {
+    locateBtn.disabled = true;
+    locateBtn.textContent = 'Locating...';
+    showBanner('Getting your location&hellip;');
+    SymbioMap.locate(
+      function (coords, accuracy) {
+        setHere(coords);
+        map.setView(coords, Math.max(map.getZoom(), 14));
+        locateBtn.disabled = false;
+        locateBtn.textContent = 'Locate me';
+        showBanner('You are here &mdash; accurate to about ' +
+                   Math.round(accuracy) + ' m. Click any company for directions.');
+      },
+      function (msg) {
+        locateBtn.disabled = false;
+        locateBtn.textContent = 'Locate me';
+        showBanner(msg, true);
+      }
+    );
+  });
+
+  /* ---- Nearest to me ---------------------------------------------------
+     Ranks by straight-line distance rather than asking OSRM for 26 routes:
+     one request per company would be both slow and an abuse of a courtesy
+     server. The chosen company then gets a single real route. */
+  document.getElementById('nearest-to-me').addEventListener('click', function () {
+    if (!here) { return; }
+    var best = null, bestKm = Infinity;
+    markers.forEach(function (m) {
+      var p = m._symbio;
+      var km = SymbioMap.haversineKm(here, [p.lat, p.lng]);
+      if (km < bestKm) { bestKm = km; best = p; }
+    });
+    if (best) {
+      map.openPopup(
+        markers.filter(function (m) { return m._symbio.id === best.id; })[0].getPopup(),
+        [best.lat, best.lng]
+      );
+      window.symbioRouteTo(best.id);
+    }
+  });
+})();
+</script>
+{% endblock %}
