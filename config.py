@@ -25,9 +25,17 @@ def _normalize_db_url(url):
     only recognizes the "postgresql://" scheme and raises
     NoSuchModuleError on the old one. Rewriting just the scheme prefix is
     the standard fix -- the rest of the URL (user/pass/host/db) is untouched.
-    A None url (nothing set yet) passes through unchanged."""
-    if url and url.startswith("postgres://"):
-        return url.replace("postgres://", "postgresql://", 1)
+    A None url (nothing set yet) passes through unchanged.
+
+    The driver is also named explicitly ("postgresql+psycopg2://"): since
+    SQLAlchemy 2.1 a bare "postgresql://" means the newer psycopg (v3)
+    driver, which isn't installed -- requirements.txt ships psycopg2-binary
+    -- so the app crashed at startup with "No module named 'psycopg'"."""
+    if not url:
+        return url
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg2://" + url[len(prefix):]
     return url
 
 
