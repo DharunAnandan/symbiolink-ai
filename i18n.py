@@ -103,6 +103,30 @@ TRANSLATIONS = {
         "CO2e avoided (est.)": "CO2e टाला गया (अनु.)",
         "Top matches by estimated saving": "अनुमानित बचत के आधार पर शीर्ष मिलान",
         "Explore each layer": "प्रत्येक स्तर देखें",
+
+        # ---- Sign in via email / registration verification ----
+        "Sign in via email": "ईमेल से साइन इन करें",
+        "Sign in via email instead": "इसके बजाय ईमेल से साइन इन करें",
+        "Email me a sign-in code": "मुझे साइन-इन कोड ईमेल करें",
+        "Enter your username or email and we'll email you a one-time sign-in code.": "अपना यूज़रनेम या ईमेल दर्ज करें, हम आपको एक बार का साइन-इन कोड ईमेल करेंगे।",
+        "Sign in with a password instead": "इसके बजाय पासवर्ड से साइन इन करें",
+        "Enter your code": "अपना कोड दर्ज करें",
+        "Sign-in code": "साइन-इन कोड",
+        "Verify and sign in": "सत्यापित करें और साइन इन करें",
+        "Verify your email": "अपना ईमेल सत्यापित करें",
+        "Verification code": "सत्यापन कोड",
+        "Verify and create account": "सत्यापित करें और खाता बनाएं",
+        "We emailed a 6-digit code to": "हमने 6 अंकों का कोड भेजा है",
+        "Send me a new code": "मुझे नया कोड भेजें",
+        "Resend code in": "कोड दोबारा भेजें",
+        "Back to sign in": "साइन इन पर वापस जाएं",
+
+        # ---- Sidebar user card ----
+        "Company": "कंपनी",
+        "Log out": "लॉग आउट",
+
+        # ---- AI assistant ----
+        "AI Assistant": "एआई सहायक",
     }
 }
 

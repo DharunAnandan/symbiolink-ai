@@ -105,7 +105,7 @@
          page never offers a route that would just bounce back here. #}
       {% if otp_available is not defined or otp_available %}
       <p class="muted" style="margin-top:14px; text-align:center;">
-        <a href="{{ url_for('login_with_code') }}" class="row-link">{{ t("Sign in with a code instead") }}</a>
+        <a href="{{ url_for('login_with_code') }}" class="row-link">{{ t("Sign in via email instead") }}</a>
       </p>
       {% endif %}
 

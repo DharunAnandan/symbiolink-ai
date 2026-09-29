@@ -1,5 +1,5 @@
 {% extends "auth_layout.html" %}
-{% block title %}Sign in with a code — SymbioLink AI{% endblock %}
+{% block title %}Sign in via email — SymbioLink AI{% endblock %}
 
 {% block content %}
 <div class="auth-wrap">
@@ -26,7 +26,7 @@
     <div class="auth-visual">
       <div class="mark">SL</div>
       <h2>{{ t("No password needed.") }}</h2>
-      <p>{{ t("We'll email you a one-time code instead.") }}</p>
+      <p>{{ t("We'll email you a one-time sign-in code instead.") }}</p>
 
       <ul class="auth-points">
         <li>
@@ -51,8 +51,8 @@
     </div>
 
     <div class="auth-form">
-      <h1>{{ t("Sign in with a code") }}</h1>
-      <p class="lead">{{ t("Enter your username or email and we'll send you a code.") }}</p>
+      <h1>{{ t("Sign in via email") }}</h1>
+      <p class="lead">{{ t("Enter your username or email and we'll email you a one-time sign-in code.") }}</p>
 
       <form method="POST">
         <label for="identifier">{{ t("Username or email") }}</label>
@@ -71,7 +71,7 @@
         </fieldset>
 
         <button type="submit" class="submit">
-          {{ t("Email me a code") }}
+          {{ t("Email me a sign-in code") }}
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
         </button>
       </form>

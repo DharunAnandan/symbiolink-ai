@@ -26,9 +26,11 @@ once a *broadcast* (one listing -> every registered user) exists:
      worker, so the background thread never touches Flask state.
 """
 
+import logging
 import smtplib
 import ssl
 import threading
+import time
 from email.header import Header
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -37,21 +39,29 @@ from email.utils import formataddr, formatdate, make_msgid
 import email_templates
 from config import Config
 
+logger = logging.getLogger("symbiolink.email")
+
 
 class EmailService:
     def __init__(self):
         self.host = getattr(Config, "SMTP_HOST", None)
         self.port = getattr(Config, "SMTP_PORT", None) or 587
         self.username = getattr(Config, "SMTP_USERNAME", None)
-        self.password = getattr(Config, "SMTP_PASSWORD", None)
+        # Gmail shows app passwords grouped as "abcd efgh ijkl mnop"; accept
+        # either form, as .env.example promises.
+        self.password = (getattr(Config, "SMTP_PASSWORD", None) or "").replace(" ", "") or None
         self.from_addr = getattr(Config, "SMTP_FROM_ADDRESS", None) or self.username
         # Display name on the From: line -- without it Gmail shows the bare
         # address, which reads like a bot and hurts deliverability.
         self.from_name = getattr(Config, "SMTP_FROM_NAME", None) or "SymbioLink AI"
 
         self.available = bool(self.host and self.username and self.password)
+        # Short machine-readable reason for the most recent failed send
+        # ("quota", "auth", "error"), so callers can tell the user something
+        # more useful than "could not send".
+        self.last_error = None
         if not self.available:
-            print("Warning: SMTP credentials not configured. Email service will be in simulation mode.")
+            logger.warning("SMTP credentials not configured. Email service will be in simulation mode.")
 
     # ---------------------------------------------------------------- build
 
@@ -114,14 +124,31 @@ class EmailService:
             self._simulate(to_addr, subject, body_text, body_html)
             return True
 
-        try:
-            msg = self._build_message(to_addr, subject, body_text, body_html)
-            with self._connect() as server:
-                server.sendmail(self.from_addr, [to_addr], msg.as_string())
-            return True
-        except Exception as e:
-            print(f"Error sending email to {to_addr}: {e}")
-            return False
+        msg = self._build_message(to_addr, subject, body_text, body_html)
+        self.last_error = None
+        # One retry: Gmail occasionally drops a fresh connection mid-handshake,
+        # and a user waiting on a sign-in code shouldn't pay for that blip.
+        # Permanent 5xx rejections (quota, bad recipient) are not retried.
+        for attempt in (1, 2):
+            try:
+                with self._connect() as server:
+                    server.sendmail(self.from_addr, [to_addr], msg.as_string())
+                logger.info("Email sent to %s: %s", to_addr, subject)
+                return True
+            except smtplib.SMTPAuthenticationError:
+                logger.exception("SMTP login rejected for %s -- check SMTP_USERNAME/SMTP_PASSWORD", self.username)
+                self.last_error = "auth"
+                return False
+            except (smtplib.SMTPDataError, smtplib.SMTPRecipientsRefused, smtplib.SMTPSenderRefused) as e:
+                self.last_error = "quota" if _is_quota_error(e) else "error"
+                logger.error("Email to %s rejected by server: %s", to_addr, e)
+                return False
+            except Exception:
+                logger.exception("Error sending email to %s (attempt %d)", to_addr, attempt)
+                self.last_error = "error"
+                if attempt == 1:
+                    time.sleep(1)
+        return False
 
     def _send_many(self, recipients, subject, body_text, body_html=None):
         """Send the same email to many recipients over ONE connection.
@@ -136,7 +163,10 @@ class EmailService:
         abort the rest of the batch, so each send is individually guarded.
         Returns the count actually sent.
         """
-        recipients = [r for r in dict.fromkeys(recipients) if r]  # dedupe, keep order
+        # dedupe (keeping order) and drop placeholder addresses such as the
+        # seeded demo units' @symbiolink.demo -- Gmail accepts those and
+        # bounces them later, which only fills the sender's inbox with errors.
+        recipients = [r for r in dict.fromkeys(recipients) if r and _deliverable(r)]
         if not recipients:
             return 0
 
@@ -154,11 +184,15 @@ class EmailService:
                         server.sendmail(self.from_addr, [addr], msg.as_string())
                         sent += 1
                     except Exception as e:
+                        if _is_quota_error(e):
+                            # Every further send will fail the same way.
+                            logger.error("Gmail sending limit reached; skipping remaining recipients: %s", e)
+                            break
                         # Keep going -- one bad address shouldn't cost the
                         # other 24 recipients their notification.
-                        print(f"Error sending email to {addr}: {e}")
-        except Exception as e:
-            print(f"Error opening SMTP connection for batch of {len(recipients)}: {e}")
+                        logger.exception("Error sending email to %s", addr)
+        except Exception:
+            logger.exception("Error opening SMTP connection for batch of %d", len(recipients))
         return sent
 
     def _simulate(self, to_addr, subject, body_text, body_html=None):
@@ -168,7 +202,7 @@ class EmailService:
         The HTML part is summarized rather than dumped; 6KB of table markup
         per recipient would bury everything else in the console."""
         tag = f" [+{len(body_html)}B HTML]" if body_html else ""
-        print(f"[SIMULATED EMAIL]{tag} To: {to_addr} | Subject: {subject}\n{body_text}\n")
+        logger.info("[SIMULATED EMAIL]%s To: %s | Subject: %s\n%s\n", tag, to_addr, subject, body_text)
 
     def send_async(self, recipients, subject, body_text, body_html=None):
         """Hand a batch to a background thread and return immediately.
@@ -188,7 +222,7 @@ class EmailService:
 
         def _worker():
             count = self._send_many(recipients, subject, body_text, body_html)
-            print(f"[EMAIL] Broadcast '{subject}' delivered to {count}/{len(recipients)} recipients")
+            logger.info("Email '%s' delivered to %d/%d recipients", subject, count, len(recipients))
 
         threading.Thread(target=_worker, name="symbiolink-email", daemon=True).start()
         return len(recipients)
@@ -209,26 +243,32 @@ class EmailService:
         try:
             from models import User
             addrs.update(u.email for u in User.query.filter_by(unit_id=unit_id).all() if u.email)
-        except Exception as e:
-            print(f"Error looking up user emails for unit {unit_id}: {e}")
+        except Exception:
+            logger.exception(f"Error looking up user emails for unit {unit_id}")
 
         try:
             import data
             unit = data.unit_by_id(unit_id)
             if unit and unit.get("email"):
                 addrs.add(unit["email"])
-        except Exception as e:
-            print(f"Error looking up unit contact email for unit {unit_id}: {e}")
+        except Exception:
+            logger.exception(f"Error looking up unit contact email for unit {unit_id}")
 
         return list(addrs)
 
     def _emails_for_admins(self):
+        """Admin inboxes: ADMIN_EMAIL from the environment (the seeded admin
+        account's own address is a placeholder that can't receive mail) plus
+        any admin account with a real address."""
+        configured = [a.strip() for a in (getattr(Config, "ADMIN_EMAIL", "") or "").split(",") if a.strip()]
         try:
             from models import User
-            return [u.email for u in User.query.filter_by(role="admin").all() if u.email]
-        except Exception as e:
-            print(f"Error looking up admin emails: {e}")
-            return []
+            return list(dict.fromkeys(
+                configured + [u.email for u in User.query.filter_by(role="admin").all() if u.email]
+            ))
+        except Exception:
+            logger.exception("Error looking up admin emails")
+            return configured
 
     def all_user_emails(self, exclude_unit_ids=None):
         """Every registered user's address -- the broadcast audience.
@@ -256,8 +296,8 @@ class EmailService:
                 and getattr(u, "is_active", True) is not False
                 and u.unit_id not in excluded
             ]
-        except Exception as e:
-            print(f"Error looking up all user emails: {e}")
+        except Exception:
+            logger.exception("Error looking up all user emails")
             return []
 
     # --------------------------------------------------------------- public
@@ -338,6 +378,21 @@ class EmailService:
             k: v for k, v in kwargs.items() if k != "preheader"
         })
         return self.send_async(recipients, subject, text, html)
+
+
+def _is_quota_error(exc):
+    """Gmail answers 550 5.4.5 "Daily user sending limit exceeded" once the
+    account has sent ~500 messages in a rolling 24 hours."""
+    text = str(exc).lower()
+    return "5.4.5" in text or "sending limit" in text or "quota" in text
+
+
+def _deliverable(addr):
+    try:
+        from otp_service import is_deliverable
+        return is_deliverable(addr)
+    except Exception:
+        return True
 
 
 email_service = EmailService()

@@ -29,6 +29,20 @@ import orders as orders_module
 from models import db, User, Order, OrderItem, OrderHistory, TrustRating
 
 
+@pytest.fixture(autouse=True)
+def no_real_email(monkeypatch):
+    """Never send real mail from the test suite.
+
+    config.py loads the developer's real .env (SMTP credentials included), so
+    without this every order/login test would send actual emails through the
+    project's Gmail account -- burning its ~500/day sending limit (which is
+    exactly what happened) and mailing the admin inbox. Simulation mode logs
+    the email instead, and tests that assert on sends patch the methods
+    themselves."""
+    from email_service import email_service
+    monkeypatch.setattr(email_service, "available", False)
+
+
 @pytest.fixture()
 def flask_app():
     """The Flask app configured for testing (in-memory SQLite, TESTING=True)."""

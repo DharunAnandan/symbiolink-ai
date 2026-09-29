@@ -52,7 +52,11 @@ def _now():
 
 
 def _next_order_id():
-    return f"ORD{len(ORDERS) + 1:03d}"
+    # max()+1 rather than len()+1: orders can be removed (e.g. when an
+    # account is deleted), and len() would then hand out an id that is
+    # still in use.
+    nums = [int(o["id"][3:]) for o in ORDERS if str(o.get("id", "")).startswith("ORD") and o["id"][3:].isdigit()]
+    return f"ORD{(max(nums) if nums else 0) + 1:03d}"
 
 
 def place_order(seller_unit_id, seller_name, material, buyer_unit_id, buyer_name, qty_kg, co2_saved_kg=0):

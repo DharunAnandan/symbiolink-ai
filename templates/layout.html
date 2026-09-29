@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#0a0c0f">
 <meta name="description" content="SymbioLink AI &mdash; a digital matching system that turns one MSME's waste into another nearby MSME's raw material, across an industrial cluster.">
 <title>{% block title %}SymbioLink AI{% endblock %}</title>
+{% include "_favicon.html" %}
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
@@ -23,6 +24,8 @@
       </div>
     </div>
 
+    {# Only the menu scrolls; the brand above and the user card below stay put. #}
+    <div class="sidebar-scroll">
     <div class="nav-group-label">{{ t("Overview") }}</div>
     <nav>
       <a href="{{ url_for('dashboard') }}" class="{{ 'active' if active == 'dashboard' else '' }}">
@@ -111,9 +114,10 @@
       {% endif %}
     </nav>
     {% endif %}
+    </div>
 
     <div class="sidebar-footer">
-      <div class="lang-toggle" role="group" aria-label="Language" style="margin-bottom: 14px;">
+      <div class="lang-toggle lang-toggle-full" role="group" aria-label="Language">
         {% for code in supported_langs %}
         <a href="{{ url_for('set_language', lang=code) }}" class="{{ 'active' if current_lang == code else '' }}">{{ lang_labels[code] }}</a>
         {% endfor %}
@@ -121,21 +125,27 @@
       {% if current_user.is_authenticated %}
       {# Single identity card: account name/role up top, and -- for a unit-role
          login -- the company that account is permanently tied to (auto-bound at
-         login/registration, see app.py's /login and /register-unit) as a second
-         line. There's no more manual "act as"/"switch company" step or link:
-         every unit-role account maps to exactly one company, so this is just a
-         readout, not a control. #}
-      <div class="acting-chip">
-        <div class="av">{{ current_user.username[0]|upper }}</div>
-        <div class="who">
-          <div class="who-account">{{ current_user.username }} <span class="role-tag">{{ current_user.role }}</span></div>
-          {% if acting_as_unit %}
-          <div class="who-acting">{{ t("Company") }}: <strong>{{ acting_as_unit.name }}</strong></div>
-          {% endif %}
-          <div class="who-links">
-            <a href="{{ url_for('logout') }}" class="switch">{{ t("log out") }}</a>
+         login/registration) as a second line, then a full-width log out button.
+         Name and company truncate with an ellipsis (full text in the tooltip)
+         instead of wrapping, so a long company name can't wreck the layout. #}
+      <div class="user-card">
+        <div class="user-card-top">
+          <div class="av" aria-hidden="true">{{ current_user.username[0]|upper }}</div>
+          <div class="who">
+            <div class="who-name" title="{{ current_user.username }}">{{ current_user.username }}</div>
+            <span class="role-badge role-{{ current_user.role }}">{{ current_user.role }}</span>
           </div>
         </div>
+        {% if acting_as_unit %}
+        <div class="who-company" title="{{ acting_as_unit.name }}">
+          <span class="who-company-label">{{ t("Company") }}</span>
+          <span class="who-company-name">{{ acting_as_unit.name }}</span>
+        </div>
+        {% endif %}
+        <a href="{{ url_for('logout') }}" class="logout-btn">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+          {{ t("Log out") }}
+        </a>
       </div>
       {% endif %}
     </div>
@@ -198,6 +208,9 @@
 
 </div>
 <script src="{{ url_for('static', filename='motion.js') }}"></script>
+{% if current_user.is_authenticated %}
+{% include "_assistant.html" %}
+{% endif %}
 {% block extra_scripts %}{% endblock %}
 </body>
 </html>

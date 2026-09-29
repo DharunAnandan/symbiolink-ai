@@ -33,6 +33,70 @@ from data import (
     remove_listing as _mem_remove_listing,
 )
 
+def delete_user_account(user):
+    """Permanently delete a user account and, if nobody else uses it, the
+    company (unit) it belongs to, together with everything that company
+    created: listings, orders, ratings, notifications, sensors and credits.
+
+    Deletes children before parents in foreign-key order so it also works on
+    Postgres, which (unlike SQLite by default) enforces the constraints.
+    Also purges the in-memory copies (data.UNITS / data.LISTINGS /
+    orders.ORDERS) so the running app stops showing the company at once.
+
+    Returns a dict of what was removed.
+    """
+    import data
+    import orders as orders_module
+    from models import (Notification, BinSensor, CarbonCredit, OrderItem,
+                        LoginOtp)
+
+    removed = {"user": user.username, "unit": None}
+    unit_id = user.unit_id
+    other_users = 0
+    if unit_id:
+        other_users = User.query.filter(User.unit_id == unit_id, User.id != user.id).count()
+
+    LoginOtp.query.filter_by(user_id=user.id).delete(synchronize_session=False)
+    user.unit_id = None
+    db.session.delete(user)
+    db.session.flush()
+
+    if unit_id and other_users == 0:
+        either_side = db.or_(Order.seller_unit_id == unit_id, Order.buyer_unit_id == unit_id)
+        order_ids = [o.id for o in Order.query.filter(either_side).all()]
+        TrustRating.query.filter(db.or_(
+            TrustRating.from_unit_id == unit_id,
+            TrustRating.to_unit_id == unit_id,
+            TrustRating.order_id.in_(order_ids) if order_ids else db.false(),
+        )).delete(synchronize_session=False)
+        for o in Order.query.filter(either_side).all():
+            db.session.delete(o)  # items + history cascade
+
+        listing_ids = [l.id for l in Listing.query.filter_by(unit_id=unit_id).all()]
+        if listing_ids:
+            OrderItem.query.filter(OrderItem.listing_id.in_(listing_ids)).update(
+                {OrderItem.listing_id: None}, synchronize_session=False)
+        Listing.query.filter_by(unit_id=unit_id).delete(synchronize_session=False)
+        Notification.query.filter_by(unit_id=unit_id).delete(synchronize_session=False)
+        for sensor in BinSensor.query.filter_by(unit_id=unit_id).all():
+            db.session.delete(sensor)  # readings cascade
+        CarbonCredit.query.filter_by(unit_id=unit_id).delete(synchronize_session=False)
+        unit = db.session.get(Unit, unit_id)
+        if unit:
+            db.session.delete(unit)
+        removed["unit"] = unit_id
+
+        data.UNITS[:] = [u for u in data.UNITS if u.get("id") != unit_id]
+        data.LISTINGS[:] = [l for l in data.LISTINGS if l.get("unit_id") != unit_id]
+        orders_module.ORDERS[:] = [
+            o for o in orders_module.ORDERS
+            if unit_id not in (o.get("seller_unit_id"), o.get("buyer_unit_id"))
+        ]
+
+    db.session.commit()
+    return removed
+
+
 # Compatibility layer - provide functions that work with both old and new data
 def get_units():
     """Get all units - tries database first, falls back to in-memory."""

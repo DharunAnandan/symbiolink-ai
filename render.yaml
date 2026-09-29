@@ -36,6 +36,9 @@ services:
         value: production
       - key: SECRET_KEY
         generateValue: true
+      # Unbuffered stdout/stderr so errors (e.g. SMTP failures) reach the logs.
+      - key: PYTHONUNBUFFERED
+        value: "1"
       - key: DATABASE_URL
         fromDatabase:
           name: symbiolink-db
@@ -67,4 +70,8 @@ services:
       - key: SMTP_PASSWORD
         sync: false
       - key: SMTP_FROM_ADDRESS
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: GEMINI_API_KEY
         sync: false

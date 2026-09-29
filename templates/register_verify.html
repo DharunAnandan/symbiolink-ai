@@ -1,5 +1,5 @@
 {% extends "auth_layout.html" %}
-{% block title %}Check your email — SymbioLink AI{% endblock %}
+{% block title %}Verify your email — SymbioLink AI{% endblock %}
 
 {% block content %}
 <div class="auth-wrap">
@@ -25,15 +25,15 @@
 
     <div class="auth-visual">
       <div class="mark">SL</div>
-      <h2>{{ t("One more step.") }}</h2>
-      <p>{{ t("Enter the code from your inbox to sign in.") }}</p>
+      <h2>{{ t("Almost there.") }}</h2>
+      <p>{{ t("Confirm your email to activate your company account.") }}</p>
 
       <ul class="auth-points">
         <li>
           <span class="pt-ic">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
           </span>
-          {{ t("No password needed") }}
+          {{ t("Keeps fake sign-ups out of the cluster") }}
         </li>
         <li>
           <span class="pt-ic">
@@ -51,14 +51,14 @@
     </div>
 
     <div class="auth-form">
-      <h1>{{ t("Enter your code") }}</h1>
+      <h1>{{ t("Verify your email") }}</h1>
       <p class="lead">
         {{ t("We emailed a 6-digit code to") }}
         <strong>{{ masked_email }}</strong>.
       </p>
 
       <form method="POST" id="otp-form">
-        <label for="code">{{ t("Sign-in code") }}</label>
+        <label for="code">{{ t("Verification code") }}</label>
         <div class="field-box">
           <span class="field-box-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M7 10h2"></path><path d="M11 10h2"></path><path d="M15 10h2"></path><path d="M7 14h10"></path></svg>
@@ -73,14 +73,14 @@
         </div>
 
         <button type="submit" class="submit">
-          {{ t("Verify and sign in") }}
+          {{ t("Verify and create account") }}
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
         </button>
       </form>
 
       {# Resend is its own form, not a link: it changes server state (issues a
          new code), so it must not be a GET that a prefetcher could fire. #}
-      <form method="POST" action="{{ url_for('resend_otp') }}" style="margin-top:14px;">
+      <form method="POST" action="{{ url_for('register_resend') }}" style="margin-top:14px;">
         <button type="submit" class="btn btn-sm" id="resend-btn"
                 {% if resend_in > 0 %}disabled data-wait="{{ resend_in }}"{% endif %}
                 style="width:100%;">
@@ -93,7 +93,7 @@
       </form>
 
       <p class="muted" style="margin-top:16px; text-align:center;">
-        <a href="{{ url_for('login') }}" class="row-link">&larr; {{ t("Back to sign in") }}</a>
+        <a href="{{ url_for('register') }}" class="row-link">&larr; {{ t("Wrong email? Start again") }}</a>
       </p>
 
       <div class="demo-creds">
@@ -131,7 +131,7 @@
     submitted = true;
     if (submitBtn) {
       submitBtn.disabled = true;
-      submitBtn.textContent = 'Signing in...';
+      submitBtn.textContent = 'Verifying...';
     }
     /* readOnly, not disabled: a disabled input is left out of the POST body,
        which would submit an empty code. */

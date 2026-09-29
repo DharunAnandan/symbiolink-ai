@@ -1,19 +1,17 @@
 """
-One-time passcodes for two-factor login.
+One-time passcodes emailed to the user, used in two places:
 
-The flow this backs (see app.py's login/verify_otp routes):
+  * Sign in via email (app.py's login_with_code/verify_otp routes): an
+    ALTERNATIVE to the password form, not a step after it. The user enters
+    a username or email, a 6-digit code is generated, hashed, stored and
+    emailed, and only once it verifies does login_user() run.
+  * Registration (app.py's register/register_verify routes): a new account
+    is created inactive and only activated once the emailed code proves the
+    address is real and belongs to the person signing up.
 
-    1. User submits username + password.
-    2. Password checks out -- but NOTHING is logged in yet. A 6-digit code is
-       generated, hashed, stored, and emailed.
-    3. User submits the code. Only once it verifies does login_user() run.
-
-The single most important property of that ordering: a correct password
-alone must never produce an authenticated session. Flask-Login's login_user()
-is therefore called in exactly one place in the whole OTP path -- after
-verify() returns ok -- and the intermediate state lives in the session as a
-plain "who is half-way through logging in" marker with no privileges of its
-own.
+In both cases login_user() is called only after verify() returns ok; the
+intermediate state lives in the session as a plain "who is half-way through"
+marker with no privileges of its own.
 
 Policy knobs are the module constants below rather than config so there is
 one obvious place to read the security posture off. All of them are
@@ -28,7 +26,7 @@ deliberately conservative:
 
 Like the rest of the notification layer, sending is best-effort -- but unlike
 notifications, a send FAILURE here must be surfaced, not swallowed: a user
-who never receives the code cannot log in, and silently showing them a
+who never receives the code cannot continue, and silently showing them an
 "enter your code" screen would be a dead end. send_code() therefore returns a
 bool the route acts on.
 """
@@ -266,8 +264,11 @@ def mask_email(address):
     return f"{shown}{'*' * max(3, len(local) - len(shown))}@{domain}"
 
 
-def send_code(user, code):
+def send_code(user, code, purpose="login"):
     """Email the code. Returns True if it was handed to the mail layer.
+
+    `purpose` is "login" (sign in via email) or "register" (confirming the
+    address of a new account) and only changes the wording.
 
     Uses the same branded template as every other email in the app (see
     email_templates.py), with the code rendered as a large monospaced block
@@ -275,34 +276,51 @@ def send_code(user, code):
 
     Returns False on failure so the caller can tell the user their code could
     not be sent, instead of parking them on a code screen that will never
-    receive anything.
+    receive anything. The reason is left on email_service.last_error.
     """
     from email_service import email_service
 
     if not getattr(user, "email", None):
         return False
 
+    if purpose == "register":
+        subject = f"{code} is your SymbioLink AI verification code"
+        heading = "Confirm your email"
+        intro = (f"Welcome to SymbioLink AI, {user.username}! Enter this code to verify "
+                 f"your email and finish creating your account. It expires in "
+                 f"{TTL_MINUTES} minutes and can only be used once.")
+        footnote = ("If you did not sign up for SymbioLink AI, you can ignore this email; "
+                    "no account will be created without this code.")
+        label = "Your verification code"
+    else:
+        subject = f"{code} is your SymbioLink AI sign-in code"
+        heading = "Your sign-in code"
+        intro = (f"Enter this code to finish signing in as {user.username}. "
+                 f"It expires in {TTL_MINUTES} minutes and can only be used once.")
+        # No "--" in user-facing copy: this string is HTML-escaped, not
+        # typographically processed, so it would render as two literal
+        # hyphens in the email rather than a dash.
+        footnote = ("If you did not try to sign in, someone may be trying to access your "
+                    "account. Never share this code. SymbioLink AI staff will never ask "
+                    "you for it.")
+        label = "Your sign-in code"
+
     try:
         return bool(email_service.send_template(
             user.email,
-            f"{code} is your SymbioLink AI sign-in code",
-            "login",
-            "Your sign-in code",
-            (f"Enter this code to finish signing in as {user.username}. "
-             f"It expires in {TTL_MINUTES} minutes and can only be used once."),
+            subject,
+            "welcome" if purpose == "register" else "login",
+            heading,
+            intro,
             code=code,
+            code_label=label,
             details=[
                 ("Account", user.username),
                 ("Requested", datetime.now().strftime("%d %b %Y, %I:%M %p")),
                 ("Valid for", f"{TTL_MINUTES} minutes"),
             ],
             preheader=f"Your SymbioLink AI code is {code}. It expires in {TTL_MINUTES} minutes.",
-            # No "--" in user-facing copy: this string is HTML-escaped, not
-            # typographically processed, so it would render as two literal
-            # hyphens in the email rather than a dash.
-            footnote=("If you did not try to sign in, someone may have your password. "
-                      "Never share this code. SymbioLink AI staff will never ask "
-                      "you for it."),
+            footnote=footnote,
         ))
     except Exception as e:
         print(f"Error sending OTP to {user.email}: {e}")

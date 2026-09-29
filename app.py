@@ -13,13 +13,20 @@ Ties together all six layers for the dashboard view:
   6. Output / dashboard (this file)
 """
 
+import logging
 import random
+
+import click
 import re
 import os
 from datetime import datetime, timedelta
 
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash, abort
 from flask_login import LoginManager, login_required, login_user, logout_user, current_user
+
+# Log to stderr (unbuffered) so email/SMTP errors actually show up in the
+# console and in gunicorn's logs instead of vanishing into buffered stdout.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 # UNITS, LISTINGS, KNOWN_MATERIALS, KNOWN_CATEGORIES, add_unit, add_listing, unit_by_id,
 # reduce_listing_qty, find_listing, update_listing_qty_absolute, and remove_listing must
@@ -54,6 +61,8 @@ from auth_decorators import admin_required, auditor_required, check_permission, 
 from payment_service import payment_service
 from email_service import email_service
 import listing_broadcast
+import order_emails
+import assistant
 import geo
 import otp_service
 import i18n
@@ -222,8 +231,11 @@ def _pending_login():
     return user, pending
 
 
-def _complete_login(user, remember, next_page):
-    """Create the real session. The one place login_user() runs in this flow."""
+def _complete_login(user, remember, next_page, send_alert=True):
+    """Create the real session. The one place login_user() runs in this flow.
+
+    `send_alert=False` is for a brand-new account finishing registration,
+    which gets a welcome email instead of a "new sign-in" alert."""
     login_user(user, remember=remember)
     session.pop(PENDING_LOGIN_KEY, None)
     # A unit-role account already tied to a company (unit_id set, either
@@ -243,8 +255,29 @@ def _complete_login(user, remember, next_page):
         otp_service.invalidate_live_codes(user.id)
     except Exception as e:
         print(f'Error invalidating OTPs after login for {user.username}: {e}')
-    _send_login_alert(user)
+    if send_alert:
+        _send_login_alert(user)
     return redirect(next_page or url_for('dashboard'))
+
+
+def _email_failure_message(action='send your code'):
+    """User-facing text for a failed code email, specific when we know why."""
+    if email_service.last_error == 'quota':
+        return (f"We couldn't {action}: our email service has hit its daily sending "
+                "limit. Please try again later, or sign in with your password.")
+    return (f"We could not {action} by email. Please try again in a moment, "
+            "or sign in with your password.")
+
+
+UNVERIFIED_MESSAGE = ('Please verify your email first. Register again with the same '
+                      'email to get a new verification code.')
+
+
+@app.route('/favicon.ico')
+def favicon():
+    """Browsers (and bookmarks, RSS readers, link previews) ask for
+    /favicon.ico at the site root regardless of the <link> tags."""
+    return app.send_static_file('favicon.ico')
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -267,7 +300,12 @@ def login():
             # Deliberately one message for both "no such user" and "wrong
             # password" -- distinguishing them turns this form into a
             # username oracle.
-            return render_template('login.html', error='Invalid username or password')
+            return render_template('login.html', error='Invalid username or password',
+                                   otp_available=app.config.get('OTP_ENABLED', True))
+
+        if user.is_active is False:
+            return render_template('login.html', error=UNVERIFIED_MESSAGE,
+                                   otp_available=app.config.get('OTP_ENABLED', True))
 
         return _complete_login(user, remember, next_page)
 
@@ -289,7 +327,7 @@ def login_with_code():
     short-lived, single-use and attempt-capped (see otp_service.py).
     """
     if not app.config.get('OTP_ENABLED', True):
-        flash('Sign-in codes are turned off. Please use your password.', 'error')
+        flash('Sign in via email is turned off. Please use your password.', 'error')
         return redirect(url_for('login'))
 
     if request.method == 'POST':
@@ -307,6 +345,9 @@ def login_with_code():
                 'login_code.html',
                 error='No account found with that username or email address.')
 
+        if user.is_active is False:
+            return render_template('login_code.html', error=UNVERIFIED_MESSAGE)
+
         if not otp_service.is_deliverable(user.email):
             # The seeded demo accounts land here. Say so plainly rather than
             # pretending to send: a remote server ACCEPTS mail for a bogus
@@ -319,10 +360,7 @@ def login_with_code():
 
         code = otp_service.issue(user, ip_address=request.remote_addr)
         if not otp_service.send_code(user, code):
-            return render_template(
-                'login_code.html',
-                error=('We could not send your code by email. Please try again, or '
-                       'sign in with your password.'))
+            return render_template('login_code.html', error=_email_failure_message())
 
         _begin_pending_login(user, remember, next_page)
         return redirect(url_for('verify_otp'))
@@ -332,11 +370,12 @@ def login_with_code():
 
 @app.route('/login/verify', methods=['GET', 'POST'])
 def verify_otp():
-    """Second factor: the code screen.
+    """The code screen for sign in via email.
 
-    Reachable only with a live pending-login marker, so it cannot be used to
-    probe for codes against an arbitrary account -- without the password step
-    there is no marker and this route just sends you back to /login.
+    Reachable only with a live pending-login marker (set by /login/code once
+    a code has been emailed), so it cannot be used to probe for codes against
+    an arbitrary account -- without that step there is no marker and this
+    route just sends you back to /login/code.
     """
     # A duplicate submission (a double-click, or Enter pressed while the
     # auto-submit was already in flight) arrives AFTER the first one signed
@@ -409,7 +448,7 @@ def resend_otp():
     if otp_service.send_code(user, code):
         flash('A new code is on its way.', 'success')
     else:
-        flash('We could not send a new code. Please try again shortly.', 'error')
+        flash(_email_failure_message('send a new code'), 'error')
     return redirect(url_for('verify_otp'))
 
 
@@ -438,42 +477,194 @@ def register():
         company_name = request.form.get('company_name', '').strip()
         category = request.form.get('category', '')
         email = request.form.get('email', '').strip()
-        password = request.form.get('password')
+        password = request.form.get('password') or ''
         confirm_password = request.form.get('confirm_password')
         form_values = {'username': username, 'company_name': company_name, 'category': category, 'email': email}
 
         def _error(message):
             return render_template('register_user.html', error=message, categories=data.KNOWN_CATEGORIES, form_values=form_values)
 
+        if not username:
+            return _error('Choose a username.')
         if not company_name:
             return _error('Enter your company / unit name.')
         if not category:
             return _error('Select a category for your company.')
+        if not email or '@' not in email:
+            return _error('Enter a valid email address.')
+        if not otp_service.is_deliverable(email):
+            return _error('That email address cannot receive mail. Use a real inbox, '
+                          'since we will send you a verification code.')
+        if len(password) < 6:
+            return _error('Password must be at least 6 characters.')
         if password != confirm_password:
             return _error('Passwords do not match')
-        if User.query.filter_by(username=username).first():
+
+        # An account that started signing up but never verified its email is
+        # not a real account yet -- let the same person retry instead of
+        # locking their email/username behind an abandoned signup.
+        by_username = User.query.filter_by(username=username).first()
+        by_email = User.query.filter(db.func.lower(User.email) == email.lower()).first()
+        if by_username and by_username.is_active is not False:
             return _error('Username already exists')
-        if User.query.filter_by(email=email).first():
+        if by_email and by_email.is_active is not False:
             return _error('Email already exists')
+        if by_username and by_email and by_username.id != by_email.id:
+            return _error('Username already exists')
 
-        user = User(username=username, email=email, role='unit')
+        # data.add_unit() de-duplicates by company name and would silently
+        # attach this new login to someone else's existing company.
+        if any((u.get('name') or '').strip().lower() == company_name.lower() for u in data.UNITS):
+            return _error('A company with that name is already registered. If it is yours, '
+                          'ask its account holder, or use a more specific name.')
+
+        user = by_email or by_username
+        if user is None:
+            user = User(username=username, email=email, role='unit')
+            db.session.add(user)
+        user.username = username
+        user.email = email
+        user.role = 'unit'
+        user.is_active = False
         user.set_password(password)
-        db.session.add(user)
         db.session.commit()
 
-        # simple demo placement: spread new units around the existing cluster so
-        # distance-based matching/pooling still behaves sensibly (same approach
-        # /register-unit uses for a first-time company).
-        loc = (round(random.uniform(0, 4.2), 2), round(random.uniform(0, 4.4), 2))
-        unit = data.add_unit(company_name, category, loc, phone="", email=email)
-        user.unit_id = unit["id"]
-        db.session.commit()
+        code = otp_service.issue(user, ip_address=request.remote_addr)
+        if not otp_service.send_code(user, code, purpose='register'):
+            return _error(_email_failure_message('send your verification code'))
 
-        login_user(user)
-        session['acting_as'] = unit["id"]
-        return redirect(url_for('dashboard'))
+        session[PENDING_REGISTRATION_KEY] = {
+            'user_id': user.id,
+            'company_name': company_name,
+            'category': category,
+            'at': datetime.utcnow().isoformat(),
+        }
+        return redirect(url_for('register_verify'))
 
     return render_template('register_user.html', categories=data.KNOWN_CATEGORIES)
+
+
+PENDING_REGISTRATION_KEY = 'pending_registration'
+
+
+def _pending_registration():
+    """(user, state) for a signup waiting on its email code, or None."""
+    pending = session.get(PENDING_REGISTRATION_KEY)
+    if not pending:
+        return None
+    try:
+        started = datetime.fromisoformat(pending['at'])
+    except (KeyError, TypeError, ValueError):
+        session.pop(PENDING_REGISTRATION_KEY, None)
+        return None
+    if datetime.utcnow() - started > timedelta(minutes=otp_service.PENDING_LOGIN_MINUTES):
+        session.pop(PENDING_REGISTRATION_KEY, None)
+        return None
+    user = db.session.get(User, pending['user_id'])
+    if not user or user.is_active is not False:
+        session.pop(PENDING_REGISTRATION_KEY, None)
+        return None
+    return user, pending
+
+
+def _send_welcome_email(user, unit):
+    try:
+        email_service.send_template_async(
+            user.email,
+            'Welcome to SymbioLink AI',
+            'welcome',
+            f'Welcome aboard, {user.username}!',
+            (f'Your email is verified and {unit["name"]} is now part of the cluster. '
+             'Post what you have or what you need, and SymbioLink AI will find nearby '
+             'companies whose waste is your raw material, or who need yours.'),
+            details=[
+                ('Company', unit['name']),
+                ('Category', unit.get('category') or ''),
+                ('Username', user.username),
+            ],
+            button_label='Post your first listing',
+            button_url=url_for('register_unit', _external=True),
+            footnote=('Tip: open the AI assistant (bottom-right of any page) and ask '
+                      '"who can buy my waste?" to get started.'),
+            preheader=f'{unit["name"]} is now on SymbioLink AI.',
+        )
+    except Exception as e:
+        print(f'Error sending welcome email to {user.email}: {e}')
+
+
+@app.route('/register/verify', methods=['GET', 'POST'])
+def register_verify():
+    """Confirm a new account's email with the code sent by /register.
+
+    Only once the code verifies is the account activated, its company
+    created, and the user signed in."""
+    if current_user.is_authenticated:
+        session.pop(PENDING_REGISTRATION_KEY, None)
+        return redirect(url_for('dashboard'))
+
+    pending = _pending_registration()
+    if not pending:
+        flash('Your signup timed out. Please register again to get a new code.', 'error')
+        return redirect(url_for('register'))
+    user, state = pending
+
+    def _page(error=None):
+        return render_template(
+            'register_verify.html',
+            masked_email=otp_service.mask_email(user.email),
+            resend_in=otp_service.seconds_until_resend(user.id),
+            ttl_minutes=otp_service.TTL_MINUTES,
+            error=error,
+        )
+
+    if request.method == 'POST':
+        ok, reason = otp_service.verify(user.id, request.form.get('code'))
+        if not ok:
+            if reason in ('too_many_attempts', 'no_code'):
+                session.pop(PENDING_REGISTRATION_KEY, None)
+                flash('That code can no longer be used. Please register again to get a new one.', 'error')
+                return redirect(url_for('register'))
+            return _page({
+                'expired': 'That code has expired. Request a new one below.',
+                'mismatch': 'That code is not right. Check the email and try again.',
+            }.get(reason, 'That code is not right.'))
+
+        # Same demo placement as before: spread new units around the existing
+        # cluster so distance-based matching/pooling still behaves sensibly.
+        loc = (round(random.uniform(0, 4.2), 2), round(random.uniform(0, 4.4), 2))
+        unit = data.add_unit(state['company_name'], state['category'], loc, phone="", email=user.email)
+        user.unit_id = unit["id"]
+        user.is_active = True
+        db.session.commit()
+        session.pop(PENDING_REGISTRATION_KEY, None)
+
+        _send_welcome_email(user, unit)
+        flash('Email verified. Welcome to SymbioLink AI!', 'success')
+        return _complete_login(user, False, None, send_alert=False)
+
+    return _page()
+
+
+@app.route('/register/resend', methods=['POST'])
+def register_resend():
+    pending = _pending_registration()
+    if not pending:
+        flash('Your signup timed out. Please register again to get a new code.', 'error')
+        return redirect(url_for('register'))
+    user, _state = pending
+
+    wait = otp_service.seconds_until_resend(user.id)
+    if wait > 0:
+        flash(f'Please wait {wait} more second{"s" if wait != 1 else ""} before '
+              f'requesting another code.', 'error')
+        return redirect(url_for('register_verify'))
+
+    code = otp_service.issue(user, ip_address=request.remote_addr)
+    if otp_service.send_code(user, code, purpose='register'):
+        flash('A new code is on its way.', 'success')
+    else:
+        flash(_email_failure_message('send a new code'), 'error')
+    return redirect(url_for('register_verify'))
 
 
 def whatsapp_link(phone, message):
@@ -641,11 +832,10 @@ def _notify_order_update(order, status_override=None):
     except Exception as e:
         print(f"Error creating order notification: {e}")
 
-    # A third, independent channel alongside WhatsApp + the in-app bell --
-    # email_service is just as best-effort/non-raising as the two above, so
-    # this can't be the thing that breaks an order update.
-    email_service.notify_unit(order["buyer_unit_id"], title, buyer_message)
-    email_service.notify_unit(order["seller_unit_id"], title, seller_message)
+    # A third, independent channel alongside WhatsApp + the in-app bell:
+    # branded HTML emails to buyer, seller and admins, sent in the background
+    # (see order_emails.py). Non-raising, so it can't break an order update.
+    order_emails.send_order_emails(order, status_text, url_for("orders_page", _external=True))
 
 
 _REMINDER_IN_APP_TEXT = {
@@ -2156,6 +2346,7 @@ def bulk_advance_orders():
             if result and result["status"] != prev_status:
                 advanced_count += 1
                 _log_order_history(order["id"], result["status"], changed_by=current_user.username, notes="Bulk advance")
+                _notify_order_update(result)
             elif result and prev_status == "confirmed" and result.get("payment_status") != "paid":
                 # BUG FIX: this used to check prev_status == "placed", but the
                 # payment gate in orders.advance_order() only ever blocks the
@@ -2264,6 +2455,39 @@ def admin_users():
     """User management for admins."""
     users = User.query.all()
     return render_template("admin_users.html", users=users)
+
+
+@app.route("/admin/users/<int:user_id>/delete", methods=["POST"])
+@admin_required
+def admin_delete_user(user_id):
+    """Permanently delete an account and (if no one else uses it) its
+    company with all its listings/orders -- see data_access.delete_user_account."""
+    user = db.session.get(User, user_id)
+    if not user:
+        flash("That user no longer exists.", "error")
+    elif user.id == current_user.id:
+        flash("You can't delete your own account while signed in.", "error")
+    else:
+        removed = data_access.delete_user_account(user)
+        msg = f"Deleted {removed['user']}"
+        if removed["unit"]:
+            msg += f" and company {removed['unit']}"
+        flash(msg + ".", "success")
+    return redirect(url_for("admin_users"))
+
+
+@app.cli.command("delete-user")
+@click.argument("identifier")
+def delete_user_command(identifier):
+    """Delete a user (by email or username) and their company's data."""
+    user = (User.query.filter(db.func.lower(User.email) == identifier.lower()).first()
+            or User.query.filter_by(username=identifier).first())
+    if not user:
+        click.echo(f"No user found for {identifier!r}")
+        raise SystemExit(1)
+    removed = data_access.delete_user_account(user)
+    click.echo(f"Deleted user {removed['user']}" +
+               (f" and company {removed['unit']}" if removed["unit"] else " (company kept: shared or none)"))
 
 
 @app.route("/admin/audit")
@@ -2490,7 +2714,14 @@ def order_raise_dispute(order_id):
     notifications_module.notify_admins(
         "dispute", dispute_title, message=reason, link=url_for("admin_disputes"),
     )
-    email_service.notify_admins(dispute_title, reason)
+    email_service.broadcast_template(
+        email_service._emails_for_admins(), f"[Admin] {dispute_title}", "alert",
+        dispute_title, f"{current_user.username} raised a dispute on order {order_id}.",
+        banner="Action needed: review and resolve this dispute.",
+        details=[("Order", order_id), ("Buyer", order["buyer_name"]),
+                 ("Seller", order["seller_name"]), ("Reason", reason)],
+        button_label="Review disputes", button_url=url_for("admin_disputes", _external=True),
+    )
     flash(f"Dispute raised on order {order_id}. An admin will review it.", "success")
     return redirect(url_for("orders_page"))
 
@@ -2528,7 +2759,13 @@ def admin_resolve_dispute(order_id):
             notifications_module.notify_unit(
                 order["buyer_unit_id"], "dispute", refund_title, message=notes or None, link=url_for("orders_page"),
             )
-            email_service.notify_unit(order["buyer_unit_id"], refund_title, notes or "No further notes provided.")
+            email_service.broadcast_template(
+                email_service._emails_for_unit(order["buyer_unit_id"]), refund_title, "success",
+                "Your dispute was resolved: refunded",
+                f"We reviewed your dispute on order {order_id} and refunded your payment.",
+                details=[("Order", order_id), ("Admin notes", notes or "No further notes provided.")],
+                button_label="Open orders", button_url=url_for("orders_page", _external=True),
+            )
             flash(f"Order {order_id} refunded and dispute closed.", "success")
         else:
             flash(f"Dispute on order {order_id} marked refunded, but no payment record was found to actually refund.", "error")
@@ -2539,7 +2776,13 @@ def admin_resolve_dispute(order_id):
         notifications_module.notify_unit(
             order["buyer_unit_id"], "dispute", reject_title, message=notes or None, link=url_for("orders_page"),
         )
-        email_service.notify_unit(order["buyer_unit_id"], reject_title, notes or "No further notes provided.")
+        email_service.broadcast_template(
+            email_service._emails_for_unit(order["buyer_unit_id"]), reject_title, "alert",
+            "Your dispute was reviewed",
+            f"We reviewed your dispute on order {order_id} and could not approve a refund.",
+            details=[("Order", order_id), ("Admin notes", notes or "No further notes provided.")],
+            button_label="Open orders", button_url=url_for("orders_page", _external=True),
+        )
         flash(f"Dispute on order {order_id} rejected.", "success")
     else:
         flash("Choose either 'Refund' or 'Reject' to resolve this dispute.", "error")
@@ -2572,6 +2815,33 @@ def notifications_page():
     unit_id, include_admin = _notification_context()
     items = notifications_module.notifications_for_context(unit_id, include_admin, limit=200)
     return render_template("notifications.html", notifications=items)
+
+
+ASSISTANT_RATE_LIMIT = 20  # messages per rolling minute, per session
+
+
+@app.route("/api/assistant/chat", methods=["POST"])
+@login_required
+def assistant_chat():
+    """Chat endpoint for the AI assistant panel (static/assistant.js).
+
+    Body: {"messages": [{"role": "user"|"assistant", "text": "..."}], "lang": "en"|"hi"}
+    Returns {"reply": "...", "mode": "ai"|"basic"}. Read-only: the assistant
+    answers and links to pages, it never changes data (see assistant.py)."""
+    now = datetime.utcnow().timestamp()
+    recent = [t for t in session.get("assistant_calls", []) if now - t < 60]
+    if len(recent) >= ASSISTANT_RATE_LIMIT:
+        return jsonify({"reply": "You're sending messages very quickly. Please wait a moment and try again.",
+                        "mode": "basic"}), 429
+    session["assistant_calls"] = recent + [now]
+
+    payload = request.get_json(silent=True) or {}
+    messages = payload.get("messages")
+    if not isinstance(messages, list):
+        return jsonify({"error": "messages must be a list"}), 400
+    lang = payload.get("lang") or i18n.current_lang()
+    reply, mode = assistant.chat(messages, lang, current_user, session.get("acting_as") or current_user.unit_id)
+    return jsonify({"reply": reply, "mode": mode})
 
 
 @app.route("/api/notifications")

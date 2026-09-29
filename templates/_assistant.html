@@ -1,0 +1,59 @@
+{# AI assistant: floating button + chat panel on every signed-in page.
+   Behaviour lives in static/assistant.js; the API is /api/assistant/chat. #}
+<div id="sl-assistant" class="asst"
+     data-endpoint="{{ url_for('assistant_chat') }}"
+     data-lang="{{ current_lang }}"
+     data-user="{{ current_user.username }}"
+     data-user-id="{{ current_user.id }}">
+  <button type="button" class="asst-launcher" aria-label="{{ t('AI Assistant') }}" aria-expanded="false" aria-controls="asst-panel">
+    <svg class="asst-ic-open" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path><path d="M8 9h8"></path><path d="M8 13h5"></path></svg>
+    <svg class="asst-ic-close" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+  </button>
+
+  <section id="asst-panel" class="asst-panel" role="dialog" aria-label="{{ t('AI Assistant') }}" hidden>
+    <header class="asst-head">
+      <div class="asst-avatar" aria-hidden="true">AI</div>
+      <div class="asst-title">
+        <strong>SymbioLink {{ t('AI Assistant') }}</strong>
+        <span class="asst-sub">{{ "टाइप करें या बोलें" if current_lang == 'hi' else "Type or speak your question" }}</span>
+      </div>
+      <button type="button" class="asst-icon-btn asst-speak-toggle" aria-pressed="false"
+              title="{{ 'जवाब बोलकर सुनाएं' if current_lang == 'hi' else 'Read replies aloud' }}">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path class="asst-wave" d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path class="asst-wave" d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>
+      </button>
+      <button type="button" class="asst-icon-btn asst-clear" title="{{ 'नई बातचीत' if current_lang == 'hi' else 'New conversation' }}">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+      </button>
+      <button type="button" class="asst-icon-btn asst-close" aria-label="Close">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </header>
+
+    <div class="asst-messages" aria-live="polite"></div>
+
+    <div class="asst-suggestions">
+      {% if current_lang == 'hi' %}
+      <button type="button">मेरा कचरा कौन खरीद सकता है?</button>
+      <button type="button">मेरे ऑर्डर की स्थिति क्या है?</button>
+      <button type="button">बुरादे (sawdust) का भाव क्या है?</button>
+      {% else %}
+      <button type="button">Who can buy my waste?</button>
+      <button type="button">What's the status of my orders?</button>
+      <button type="button">Where can I source what I need?</button>
+      {% endif %}
+    </div>
+
+    <form class="asst-form" autocomplete="off">
+      <button type="button" class="asst-mic" title="{{ 'बोलकर पूछें' if current_lang == 'hi' else 'Ask by voice' }}" aria-pressed="false">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M19 10v1a7 7 0 0 1-14 0v-1"></path><line x1="12" y1="18" x2="12" y2="22"></line></svg>
+      </button>
+      <textarea class="asst-input" rows="1" maxlength="1500"
+                placeholder="{{ 'अपना सवाल लिखें…' if current_lang == 'hi' else 'Ask about buyers, prices, orders…' }}"
+                aria-label="Message"></textarea>
+      <button type="submit" class="asst-send" aria-label="Send">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+      </button>
+    </form>
+  </section>
+</div>
+<script src="{{ url_for('static', filename='assistant.js') }}"></script>

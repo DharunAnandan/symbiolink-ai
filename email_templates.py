@@ -46,6 +46,8 @@ ACCENTS = {
     "order":   {"main": "#b45309", "tint": "#fef4e2", "grad": "#fbbf24", "emoji": "&#128230;"},
     "alert":   {"main": "#dc2626", "tint": "#fdecec", "grad": "#f87171", "emoji": "&#9888;"},
     "welcome": {"main": "#16a34a", "tint": "#e7f9ee", "grad": "#22d3ee", "emoji": "&#127881;"},
+    # Good news on an order (accepted, delivered, completed, paid).
+    "success": {"main": "#059669", "tint": "#e6f7f1", "grad": "#34d399", "emoji": "&#9989;"},
 }
 
 FONT = ("-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, "
@@ -111,7 +113,7 @@ def _detail_rows(details):
                 b=PALETTE["border"], rows="".join(rows)))
 
 
-def _code_block(code, accent):
+def _code_block(code, accent, label=None):
     """A one-time passcode, rendered to be read and retyped at a glance.
 
     Large, monospaced and letter-spaced, because the entire job of this
@@ -127,12 +129,61 @@ def _code_block(code, accent):
         'style="margin:0 0 22px 0;"><tr>'
         '<td align="center" bgcolor="{tint}" style="padding:22px 12px;border-radius:12px;">'
         '<div style="font:600 10px {font};color:{muted};text-transform:uppercase;'
-        'letter-spacing:1.2px;padding-bottom:10px;">Your sign-in code</div>'
+        'letter-spacing:1.2px;padding-bottom:10px;">{label}</div>'
         '<div style="font:700 34px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;'
         'color:{main};letter-spacing:9px;line-height:1;">{code}</div>'
         '</td></tr></table>'.format(
             tint=accent["tint"], font=FONT, muted=PALETTE["muted"],
-            main=accent["main"], code=_esc(code))
+            main=accent["main"], code=_esc(code), label=_esc(label or "Your sign-in code"))
+    )
+
+
+def _banner(text, accent):
+    """A highlighted call-out line (e.g. "Action needed: accept or decline
+    this request"), so the one thing the reader must do isn't lost in the
+    detail rows."""
+    if not text:
+        return ""
+    return (
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        'style="margin:0 0 22px 0;"><tr>'
+        '<td bgcolor="{tint}" style="padding:14px 16px;border-radius:10px;'
+        'border-left:4px solid {main};font:600 14px/1.5 {font};color:{ink};">{t}</td>'
+        '</tr></table>'.format(tint=accent["tint"], main=accent["main"], font=FONT,
+                               ink=PALETTE["ink"], t=_esc(text))
+    )
+
+
+def _progress_steps(steps, accent):
+    """Order progress tracker: Placed -> Accepted -> Picked up -> ...
+
+    `steps` is a list of (label, state) with state "done", "current",
+    "todo" or "stopped" (a cancelled order). Table cells rather than flexbox
+    or SVG because that is the only layout every mail client agrees on."""
+    if not steps:
+        return ""
+    cells = []
+    for label, state in steps:
+        if state == "done":
+            dot_bg, dot_fg, glyph, txt = accent["main"], "#ffffff", "&#10003;", PALETTE["ink"]
+        elif state == "current":
+            dot_bg, dot_fg, glyph, txt = accent["grad"], "#ffffff", "&#9679;", accent["main"]
+        elif state == "stopped":
+            dot_bg, dot_fg, glyph, txt = PALETTE["critical"], "#ffffff", "&#10005;", PALETTE["critical"]
+        else:
+            dot_bg, dot_fg, glyph, txt = PALETTE["border"], PALETTE["muted"], "&nbsp;", PALETTE["muted"]
+        bar = accent["main"] if state == "done" else PALETTE["border"]
+        cells.append(
+            '<td align="center" valign="top" style="padding:0 2px;">'
+            '<div style="height:4px;background-color:{bar};border-radius:2px;margin:0 0 8px 0;"></div>'
+            '<div style="width:24px;height:24px;line-height:24px;border-radius:12px;'
+            'background-color:{bg};color:{fg};font:700 12px {font};margin:0 auto 6px auto;">{g}</div>'
+            '<div style="font:{w} 11px/1.3 {font};color:{txt};">{l}</div></td>'.format(
+                bar=bar, bg=dot_bg, fg=dot_fg, g=glyph, font=FONT, txt=txt, l=_esc(label),
+                w="700" if state in ("current", "stopped") else "500"))
+    return (
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        'style="margin:0 0 24px 0;table-layout:fixed;"><tr>{}</tr></table>'.format("".join(cells))
     )
 
 
@@ -153,7 +204,8 @@ def _button(label, url, accent):
 
 
 def render(kind, heading, intro, stats=None, details=None, code=None,
-           button_label=None, button_url=None, footnote=None, preheader=None):
+           button_label=None, button_url=None, footnote=None, preheader=None,
+           code_label=None, banner=None, progress=None):
     """Build the full branded HTML email.
 
     `kind` picks the accent from ACCENTS. An unknown kind falls back to the
@@ -208,7 +260,9 @@ def render(kind, heading, intro, stats=None, details=None, code=None,
     </td></tr>
 
     <tr><td style="padding:0 32px;">
+      {banner}
       {code_block}
+      {progress}
       {cards}
       {rows}
       {button}
@@ -231,7 +285,8 @@ def render(kind, heading, intro, stats=None, details=None, code=None,
         accent_grad=accent["grad"], emoji=accent["emoji"], font=FONT,
         ink=PALETTE["ink"], muted=PALETTE["muted"], border=PALETTE["border"],
         heading=_esc(heading), intro=_esc(intro),
-        code_block=_code_block(code, accent),
+        code_block=_code_block(code, accent, code_label),
+        banner=_banner(banner, accent), progress=_progress_steps(progress, accent),
         cards=_stat_cards(stats, accent), rows=_detail_rows(details),
         button=_button(button_label, button_url, accent),
         footnote=_esc(footnote or "You are receiving this because your company "
@@ -240,7 +295,8 @@ def render(kind, heading, intro, stats=None, details=None, code=None,
 
 
 def plain_text(heading, intro, stats=None, details=None, code=None,
-               button_label=None, button_url=None, footnote=None):
+               button_label=None, button_url=None, footnote=None,
+               code_label=None, banner=None, progress=None):
     """The text/plain alternative part.
 
     Not optional politeness: a multipart email shipping HTML with no text
@@ -248,6 +304,11 @@ def plain_text(heading, intro, stats=None, details=None, code=None,
     accessibility readers use this part. Mirrors the same content as
     render() rather than saying "view this in an HTML client"."""
     lines = ["SYMBIOLINK AI", "=" * 46, "", heading, "", intro, ""]
+    if banner:
+        lines += [">> " + banner, ""]
+    if progress:
+        marks = {"done": "[x]", "current": "[>]", "stopped": "[!]"}
+        lines += ["  " + "  ".join("{} {}".format(marks.get(st, "[ ]"), lbl) for lbl, st in progress), ""]
     if code:
         lines += ["    " + str(code), ""]
     for label, value in (stats or []):

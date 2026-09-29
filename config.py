@@ -72,6 +72,16 @@ class Config:
     # Display name on the From: line ("SymbioLink AI <sysbiolink@gmail.com>").
     # Gmail shows the bare address without this, which reads like a bot.
     SMTP_FROM_NAME = os.environ.get('SMTP_FROM_NAME') or 'SymbioLink AI'
+    # Where admin copies of order/dispute emails go. The seeded admin account
+    # uses a placeholder address that can't receive mail, so this is the
+    # real inbox. Comma-separate several addresses if needed.
+    ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL') or 'sysmbiolink@gmail.com'
+
+    # AI assistant (assistant.py) -- Google Gemini's free tier. Get a key at
+    # https://aistudio.google.com/apikey. Without one the chat still works,
+    # falling back to rule-based answers over the same cluster data.
+    GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
+    GEMINI_MODEL = os.environ.get('GEMINI_MODEL') or 'gemini-3.8-flash'
 
     # Broadcast fan-out: email every registered user when a company posts a
     # new listing. Off by default is the wrong default here (the whole point
@@ -92,7 +102,7 @@ class Config:
     # ALTERNATIVE to the password form -- the two are equal paths, not steps:
     # a password alone signs you in, and a code alone signs you in.
     #
-    # Turning this off hides the "Sign in with a code instead" link and makes
+    # Turning this off hides the "Sign in via email instead" link and makes
     # /login/code redirect back to the password form, leaving passwords as
     # the only way in. See otp_service.py for the code policy (length, TTL,
     # attempt cap, resend cooldown).
