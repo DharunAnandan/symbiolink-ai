@@ -55,13 +55,24 @@ class EmailService:
         # address, which reads like a bot and hurts deliverability.
         self.from_name = getattr(Config, "SMTP_FROM_NAME", None) or "SymbioLink AI"
 
-        self.available = bool(self.host and self.username and self.password)
+        # Brevo's HTTP API is used instead of SMTP when BREVO_API_KEY is set.
+        # Hosts like Render's free tier block outbound SMTP ports entirely,
+        # and an HTTPS API call goes through where SMTP can't. Free plan:
+        # 300 emails/day, sending from a sender address verified in Brevo.
+        self.brevo_key = getattr(Config, "BREVO_API_KEY", None)
+        if self.brevo_key:
+            self.from_addr = getattr(Config, "SMTP_FROM_ADDRESS", None) or self.from_addr or ""
+        self.transport = "brevo" if self.brevo_key else "smtp"
+
+        self.available = bool(self.brevo_key or (self.host and self.username and self.password))
         # Short machine-readable reason for the most recent failed send
         # ("quota", "auth", "error"), so callers can tell the user something
         # more useful than "could not send".
         self.last_error = None
         if not self.available:
             logger.warning("SMTP credentials not configured. Email service will be in simulation mode.")
+        elif self.brevo_key and not self.from_addr:
+            logger.warning("BREVO_API_KEY is set but SMTP_FROM_ADDRESS is empty; Brevo needs a verified sender.")
 
     # ---------------------------------------------------------------- build
 
@@ -124,8 +135,11 @@ class EmailService:
             self._simulate(to_addr, subject, body_text, body_html)
             return True
 
-        msg = self._build_message(to_addr, subject, body_text, body_html)
         self.last_error = None
+        if self.transport == "brevo":
+            return self._send_brevo(to_addr, subject, body_text, body_html)
+
+        msg = self._build_message(to_addr, subject, body_text, body_html)
         # One retry: Gmail occasionally drops a fresh connection mid-handshake,
         # and a user waiting on a sign-in code shouldn't pay for that blip.
         # Permanent 5xx rejections (quota, bad recipient) are not retried.
@@ -175,6 +189,15 @@ class EmailService:
                 self._simulate(addr, subject, body_text, body_html)
             return len(recipients)
 
+        if self.transport == "brevo":
+            sent = 0
+            for addr in recipients:
+                if self._send_brevo(addr, subject, body_text, body_html):
+                    sent += 1
+                elif self.last_error == "quota":
+                    break
+            return sent
+
         sent = 0
         try:
             with self._connect() as server:
@@ -194,6 +217,38 @@ class EmailService:
         except Exception:
             logger.exception("Error opening SMTP connection for batch of %d", len(recipients))
         return sent
+
+    def _send_brevo(self, to_addr, subject, body_text, body_html=None):
+        """One email through Brevo's transactional API (HTTPS, port 443).
+        Same non-raising contract as _send(); sets last_error on failure."""
+        import requests
+        payload = {
+            "sender": {"name": self.from_name, "email": self.from_addr},
+            "to": [{"email": to_addr}],
+            "subject": subject,
+            "textContent": body_text,
+        }
+        if body_html:
+            payload["htmlContent"] = body_html
+        try:
+            resp = requests.post(
+                "https://api.brevo.com/v3/smtp/email",
+                headers={"api-key": self.brevo_key, "accept": "application/json",
+                         "content-type": "application/json"},
+                json=payload, timeout=20,
+            )
+        except Exception:
+            logger.exception("Error reaching Brevo to email %s", to_addr)
+            self.last_error = "error"
+            return False
+        if resp.status_code in (200, 201, 202):
+            logger.info("Email sent to %s via Brevo: %s", to_addr, subject)
+            return True
+        body = resp.text[:300]
+        self.last_error = ("quota" if resp.status_code in (402, 429) or "limit" in body.lower()
+                           else "auth" if resp.status_code == 401 else "error")
+        logger.error("Brevo rejected email to %s: HTTP %s %s", to_addr, resp.status_code, body)
+        return False
 
     def _simulate(self, to_addr, subject, body_text, body_html=None):
         """Simulation mode: print exactly what would have gone out, same

@@ -1117,6 +1117,11 @@ def seed_database_once():
         abort(404)
     from database_migration import seed_all
     seed_all()
+    # Switch this running process over to the now-populated database right
+    # away. Without this it keeps serving the in-memory demo data it fell
+    # back to at startup (the DB was empty then), and anything registered
+    # afterwards would only live in memory until the next restart.
+    data_access.update_data_imports()
     return (
         "Database seeded. Log in with admin / admin123, or any of u1..u24 / "
         "demo123 -- or just register a brand-new company from the site's "

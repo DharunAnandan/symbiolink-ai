@@ -36,6 +36,10 @@ services:
         value: production
       - key: SECRET_KEY
         generateValue: true
+      # Token for the one-time /admin/seed-database?token=... URL. Random per
+      # deploy; copy it from the service's Environment tab.
+      - key: SEED_TOKEN
+        generateValue: true
       # Unbuffered stdout/stderr so errors (e.g. SMTP failures) reach the logs.
       - key: PYTHONUNBUFFERED
         value: "1"
@@ -71,7 +75,16 @@ services:
         sync: false
       - key: SMTP_FROM_ADDRESS
         sync: false
+      - key: SMTP_FROM_NAME
+        value: SymbioLink AI
+      # Render's free tier blocks outbound SMTP -- set this to send email
+      # through Brevo's HTTPS API instead (free, 300/day). SMTP_FROM_ADDRESS
+      # must be a sender verified in Brevo.
+      - key: BREVO_API_KEY
+        sync: false
       - key: ADMIN_EMAIL
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.8-flash

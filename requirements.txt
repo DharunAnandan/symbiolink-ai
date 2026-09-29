@@ -30,7 +30,13 @@ python-dotenv>=1.0.0
 # sentence-transformers/torch (500MB-2GB+ download) -- see ml_text.py's module
 # docstring for the full reasoning. Run `python train_ml_models.py` once after
 # installing to (re)generate ml_artifacts/*.joblib.
-scikit-learn>=1.3.0
+# Pinned on Python 3.11+ (what Render runs) to the exact version the
+# committed ml_artifacts/*.joblib were trained with -- a pickled model loaded
+# by a different scikit-learn version can crash (e.g. LogisticRegression's
+# missing `multi_class`). Python 3.10 can't install 1.9, so older local
+# setups keep a range and must retrain with train_ml_models.py.
+scikit-learn==1.9.0; python_version >= "3.11"
+scikit-learn>=1.3.0; python_version < "3.11"
 joblib>=1.3.0
 
 # Network-optimized matching (optimization.py) -- Google OR-Tools' CP-SAT solver,

@@ -191,3 +191,46 @@ def test_assistant_uses_gemini_when_key_set(client, seeded_users, monkeypatch):
 def test_assistant_requires_login(client):
     resp = client.post("/api/assistant/chat", json={"messages": [{"role": "user", "text": "hi"}]})
     assert resp.status_code in (302, 401)
+
+
+def test_brevo_transport_sends_over_https(monkeypatch):
+    """With BREVO_API_KEY set, email goes through Brevo's API, not SMTP."""
+    calls = []
+
+    class _Resp:
+        status_code = 201
+        text = '{"messageId": "x"}'
+
+    def _fake_post(url, headers=None, json=None, timeout=None):
+        calls.append((url, headers, json))
+        return _Resp()
+
+    import requests
+    monkeypatch.setattr(requests, "post", _fake_post)
+    monkeypatch.setattr(email_service, "available", True)
+    monkeypatch.setattr(email_service, "transport", "brevo")
+    monkeypatch.setattr(email_service, "brevo_key", "brevo-test-key")
+    monkeypatch.setattr(email_service, "from_addr", "sender@symbiolink-test.org")
+    monkeypatch.setattr(email_service, "_connect", lambda: (_ for _ in ()).throw(AssertionError("SMTP used")))
+
+    assert email_service._send("a@symbiolink-test.org", "Hi", "text", "<b>html</b>") is True
+    assert email_service._send_many(["b@symbiolink-test.org", "c@symbiolink-test.org"], "Hi", "t") == 2
+    url, headers, body = calls[0]
+    assert url == "https://api.brevo.com/v3/smtp/email"
+    assert headers["api-key"] == "brevo-test-key"
+    assert body["to"] == [{"email": "a@symbiolink-test.org"}]
+    assert body["sender"]["email"] == "sender@symbiolink-test.org"
+
+
+def test_brevo_quota_error_is_reported(monkeypatch):
+    class _Resp:
+        status_code = 429
+        text = "Too many requests"
+
+    import requests
+    monkeypatch.setattr(requests, "post", lambda *a, **k: _Resp())
+    monkeypatch.setattr(email_service, "available", True)
+    monkeypatch.setattr(email_service, "transport", "brevo")
+    monkeypatch.setattr(email_service, "brevo_key", "k")
+    assert email_service._send("a@symbiolink-test.org", "Hi", "text") is False
+    assert email_service.last_error == "quota"

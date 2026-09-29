@@ -72,6 +72,10 @@ class Config:
     # Display name on the From: line ("SymbioLink AI <sysbiolink@gmail.com>").
     # Gmail shows the bare address without this, which reads like a bot.
     SMTP_FROM_NAME = os.environ.get('SMTP_FROM_NAME') or 'SymbioLink AI'
+    # Optional: send email through Brevo's HTTPS API instead of SMTP (see
+    # email_service.py). Needed on hosts that block SMTP, e.g. Render's free
+    # tier. SMTP_FROM_ADDRESS must be a sender verified in Brevo.
+    BREVO_API_KEY = os.environ.get('BREVO_API_KEY')
     # Where admin copies of order/dispute emails go. The seeded admin account
     # uses a placeholder address that can't receive mail, so this is the
     # real inbox. Comma-separate several addresses if needed.
