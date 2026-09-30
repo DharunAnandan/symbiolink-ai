@@ -2,6 +2,13 @@
 Photo-based material classification -- "see" the waste, don't just read a
 description of it.
 
+How a photo is classified now (see classify_photo): Gemini vision when
+GEMINI_API_KEY is set, otherwise the colour heuristic (heuristic_classify).
+The RandomForest described below is still trained by train_ml_models.py but
+is no longer used for predictions: trained only on synthetic squares, it
+labelled almost every real photo "metal" or "electronic scrap" (a cardboard
+pile came back as metal scrap). The notes below describe that original model.
+
 The problem: typing a clear listing description ("220kg metal shavings") is
 easy for some owners and genuinely hard for others -- not everyone writes
 confident English or Hindi, but everyone can point a phone camera at a pile of
@@ -249,6 +256,100 @@ def _load_model():
 
 
 # ---------------------------------------------------------------------------
+# Colour heuristic -- the offline fallback
+# ---------------------------------------------------------------------------
+#
+# The RandomForest above only ever saw flat synthetic squares, and on real
+# photos (floors, walls, shadows, print on boxes) it labelled nearly
+# everything "metal" or "electronic scrap" -- a pile of cardboard came back as
+# metal scrap. This fallback instead measures what fraction of the centre of
+# the photo falls into a few colour groups that separate the families in real
+# photos (tan/brown board vs. grey metal vs. dark saturated rust, vivid mixed
+# plastics, PCB green, black rubber) and scores each family from those.
+# Transparent and dependency-free (no pickled model, so no scikit-learn
+# version coupling), but still a guess: classify_photo() prefers Gemini
+# vision when a key is configured, and the page always lets the owner pick a
+# different material before posting.
+
+def _colour_groups(image: Image.Image):
+    """Fractions of the photo's central region in each colour group."""
+    img = image.convert("RGB")
+    w, h = img.size
+    # The material is usually centred; the edges are mostly floor, wall or sky.
+    cw, ch = max(1, int(w * 0.7)), max(1, int(h * 0.7))
+    img = img.crop(((w - cw) // 2, (h - ch) // 2, (w + cw) // 2, (h + ch) // 2)).resize((96, 96))
+    hsv = np.asarray(img.convert("HSV"), dtype=np.float32)
+    H = hsv[..., 0] * 360.0 / 255.0
+    S = hsv[..., 1] / 255.0
+    V = hsv[..., 2] / 255.0
+    edges = float(np.asarray(img.convert("L").filter(ImageFilter.FIND_EDGES), dtype=np.float32).mean())
+
+    browns = (H >= 15) & (H <= 50) & (S >= 0.18)
+    board = browns & (S <= 0.62) & (V >= 0.40) & (V <= 0.97)       # cardboard / paper / sawdust tan
+    rust = browns & (S > 0.45) & (V < 0.52)                         # corroded steel
+    dark_brown = browns & (V >= 0.15) & (V < 0.40) & ~rust          # leather, wet wood, flute shadows
+    grey = (S < 0.13) & (V >= 0.22) & (V <= 0.88)                   # bare metal, concrete
+    white = (S < 0.13) & (V > 0.88)                                 # paper, film, clear glass glare
+    black = V < 0.16                                                # rubber, shadows
+    vivid = (S > 0.45) & (V > 0.40)
+    green = (H >= 75) & (H <= 170) & (S > 0.25) & (V > 0.15)
+    blue = (H >= 180) & (H <= 260) & (S > 0.25) & (V > 0.20)
+    olive = (H >= 45) & (H < 75) & (S > 0.2) & (V < 0.55)
+
+    coloured = (S > 0.30) & (V > 0.30)
+    hist, _ = np.histogram(H[coloured], bins=12, range=(0, 360))
+    hist = hist / max(1, hist.sum())
+    distinct_hues = int((hist > 0.08).sum())
+
+    return {
+        "board": float(board.mean()), "rust": float(rust.mean()),
+        "dark_brown": float(dark_brown.mean()), "grey": float(grey.mean()),
+        "white": float(white.mean()), "black": float(black.mean()),
+        "vivid": float(vivid.mean()), "green": float(green.mean()),
+        "blue": float(blue.mean()), "olive": float(olive.mean()),
+        "distinct_hues": distinct_hues, "edges": edges,
+    }
+
+
+def heuristic_scores(image: Image.Image):
+    """Score every family from colour-group fractions; higher = more likely."""
+    g = _colour_groups(image)
+    multi = 1.0 if g["distinct_hues"] >= 3 else 0.4
+    busy = min(1.0, g["edges"] / 60.0)  # fine detail, e.g. circuit boards, shavings
+    brown_total = g["board"] + g["rust"] + g["dark_brown"]
+    # Corrugated board has dark brown flute edges that look rust-like; brown
+    # only counts as rust (metal) when rust is most of the brown in the frame.
+    rust_share = g["rust"] / brown_total if brown_total else 0.0
+    scores = {
+        "cardboard_paper": (1.5 * (g["board"] + 0.6 * g["dark_brown"] + 0.4 * g["rust"] * (1 - rust_share))
+                            + 0.3 * g["white"]),
+        "metal_scrap": 0.8 * g["grey"] + 1.4 * g["rust"] * rust_share + 0.1 * busy,
+        "plastic": 0.9 * g["blue"] + 0.6 * g["vivid"] * multi * (1 - rust_share) + 0.15 * g["white"],
+        "electronic_scrap": 0.9 * g["green"] * busy + 0.3 * g["vivid"] * multi * busy,
+        "rubber": 1.1 * max(0.0, g["black"] - 0.12),
+        "wood": 0.35 * g["board"] * busy + 0.3 * g["dark_brown"],
+        "leather": 0.4 * g["dark_brown"] * (1.0 - busy),
+        "fabric_textile": 0.5 * g["vivid"] * (1.0 - busy) * (1 - rust_share),
+        "glass": 0.35 * g["green"] * (1.0 - busy) + 0.15 * g["white"],
+        "organic_sludge": 0.8 * g["olive"] + 0.15 * g["dark_brown"],
+    }
+    return {k: max(0.0, v) for k, v in scores.items()}, g
+
+
+def heuristic_classify(image: Image.Image):
+    """(family, confidence, ranked [(family, share)]) from the colour heuristic."""
+    scores, _groups = heuristic_scores(image)
+    total = sum(scores.values()) or 1.0
+    ranked = sorted(((f, s / total) for f, s in scores.items()), key=lambda x: -x[1])
+    best, share = ranked[0]
+    # Confidence reflects how clearly the winner beats the runner-up, capped:
+    # colour alone can't be certain about a material.
+    margin = share - ranked[1][1]
+    confidence = round(min(0.75, 0.35 + margin * 1.5), 2)
+    return best, confidence, ranked
+
+
+# ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
@@ -269,46 +370,134 @@ def _qty_range_for_fill(fill_fraction):
     return QTY_RANGE_KG_BY_FILL[-1][1]
 
 
+ALL_MATERIALS = [m for family in FAMILY_LABELS for m in MATERIAL_FAMILIES[family]]
+
+VISION_PROMPT = """You are classifying a photo of industrial waste for a marketplace where factories \
+sell their waste as another factory's raw material.
+
+Pick the ONE material family that best describes the main material visible, and the most specific \
+material from that family's list:
+{families}
+
+Also estimate the visible quantity in kg as a rough range (a single box is a few kg; a bale or \
+pallet is roughly 100-500 kg; a truckload or large heap is 1000+ kg).
+
+Reply with JSON only:
+{{"family": "<family key>", "material": "<material key>", "confidence": <0-1>, \
+"qty_kg_low": <number>, "qty_kg_high": <number>, "description": "<under 15 words, what you see>"}}
+If the photo shows no waste material at all, use the closest family with confidence below 0.3."""
+
+
+def _vision_classify(image: Image.Image):
+    """Ask Gemini (free tier) to classify the photo. Returns a dict or raises."""
+    import base64
+    import json
+
+    import assistant  # shared Gemini call with model fallback
+
+    img = image.convert("RGB")
+    img.thumbnail((768, 768))  # plenty for recognition; keeps the request small
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=82)
+
+    families = "\n".join(f"- {fam}: {', '.join(MATERIAL_FAMILIES[fam])}" for fam in FAMILY_LABELS)
+    body = {
+        "contents": [{"role": "user", "parts": [
+            {"text": VISION_PROMPT.format(families=families)},
+            {"inline_data": {"mime_type": "image/jpeg",
+                             "data": base64.b64encode(buf.getvalue()).decode("ascii")}},
+        ]}],
+        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 2048,
+                             "responseMimeType": "application/json",
+                             "thinkingConfig": {"thinkingLevel": "low"}},
+    }
+    text = assistant.gemini_generate(body)
+    reply = json.loads(text[text.find("{"): text.rfind("}") + 1])
+
+    family = reply.get("family")
+    if family not in MATERIAL_FAMILIES:
+        raise ValueError(f"unknown family from vision model: {family!r}")
+    material = reply.get("material")
+    if material not in MATERIAL_FAMILIES[family]:
+        material = primary_material_for_family(family)
+    try:
+        confidence = max(0.0, min(1.0, float(reply.get("confidence", 0.6))))
+    except (TypeError, ValueError):
+        confidence = 0.6
+    try:
+        lo, hi = float(reply["qty_kg_low"]), float(reply["qty_kg_high"])
+        qty = (int(round(lo)), int(round(hi))) if 0 < lo <= hi <= 100000 else None
+    except (KeyError, TypeError, ValueError):
+        qty = None
+    return {"family": family, "material": material, "confidence": confidence,
+            "qty": qty, "description": str(reply.get("description") or "")[:120]}
+
+
 def classify_photo(image_bytes):
     """Classify a photo (raw bytes, e.g. from a Flask file upload) into a
     material family + rough quantity range. Returns a dict shaped similarly
     to whatsapp_stub.parse_message()'s result so callers can reuse the same
-    'preview, then let the owner confirm before posting' UI pattern."""
+    'preview, then let the owner confirm before posting' UI pattern.
+
+    Uses Gemini vision when GEMINI_API_KEY is configured (it genuinely
+    recognises cardboard, metal, plastic... in real photos), and the colour
+    heuristic above otherwise or if the API call fails. Either way the
+    result lists every material so the page can let the owner correct it."""
     try:
         image = Image.open(io.BytesIO(image_bytes))
         image.load()
     except Exception:
         return {"ok": False, "reason": "Couldn't read that file as an image -- try a JPEG or PNG photo."}
 
-    model = _load_model()
-    if model is None:
-        return {"ok": False, "reason": "Photo classifier hasn't been trained yet -- run `python train_ml_models.py`."}
+    from config import Config
 
-    features = extract_features(image).reshape(1, -1)
-    family = model.predict(features)[0]
-    proba = model.predict_proba(features)[0]
-    confidence = float(proba.max())
+    vision = None
+    if getattr(Config, "GEMINI_API_KEY", None):
+        try:
+            vision = _vision_classify(image)
+        except Exception:
+            import logging
+            logging.getLogger("symbiolink.photo").exception(
+                "Gemini vision classification failed; using the colour heuristic")
 
-    fill_fraction = _fill_fraction(image)
-    qty_lo, qty_hi = _qty_range_for_fill(fill_fraction)
-    material_key = primary_material_for_family(family)
+    _best, heur_conf, ranked = heuristic_classify(image)
+    if vision:
+        family, material, confidence = vision["family"], vision["material"], vision["confidence"]
+        method, description = "ai-vision", vision["description"]
+        qty_lo, qty_hi = vision["qty"] or _qty_range_for_fill(_fill_fraction(image))
+    else:
+        family, confidence = _best, heur_conf
+        material = primary_material_for_family(family)
+        method, description = "heuristic", ""
+        qty_lo, qty_hi = _qty_range_for_fill(_fill_fraction(image))
+
+    # Other likely families, best first, for the "not right? pick another" list.
+    alternatives = [f for f, _share in ranked if f != family][:3]
+    ordered_families = [family] + [f for f, _s in ranked if f != family]
+    material_choices = [m for f in ordered_families for m in MATERIAL_FAMILIES[f]]
+
+    note = ("Recognised by Gemini vision. " if method == "ai-vision" else
+            "Best guess from the photo's colours (AI vision not configured or unavailable), "
+            "so check it. ")
+    note += ("The quantity is a rough visual estimate, not a measurement. If a bin sensor is "
+             "registered for this material, use its measured weight instead (see IoT Bin Sensors).")
 
     return {
         "ok": True,
         "family": family,
         "family_label": family.replace("_", " "),
         "confidence": round(confidence, 2),
-        "material": material_key,
+        "material": material,
         "material_options": MATERIAL_FAMILIES.get(family, []),
+        "material_choices": material_choices,
+        "alternatives": [a.replace("_", " ") for a in alternatives],
+        "description": description,
         "type": "waste",  # photo intake is for "here's my waste pile", not a need
         "qty_kg_low": qty_lo,
         "qty_kg_high": qty_hi,
         "qty_kg_estimate": round((qty_lo + qty_hi) / 2),
-        "method": "ml",
-        "note": (
-            "Rough visual estimate from photo fill -- not a measurement. If a bin sensor "
-            "is registered for this material, use its measured weight instead (see IoT Bin Sensors)."
-        ),
+        "method": method,
+        "note": note,
     }
 
 

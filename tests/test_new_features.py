@@ -223,3 +223,63 @@ def test_classify_photo_recognizes_a_synthetic_family_image():
 def test_classify_photo_rejects_non_image_bytes():
     result = photo_classifier.classify_photo(b"not an image")
     assert result["ok"] is False
+
+
+def _jpeg_bytes(img):
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG")
+    return buf.getvalue()
+
+
+def test_tan_cardboard_like_photo_is_not_classified_as_metal():
+    """Regression: a brown/tan cardboard photo used to come back as metal scrap."""
+    from PIL import Image, ImageDraw
+    img = Image.new("RGB", (200, 150), (190, 190, 186))  # grey floor around it
+    draw = ImageDraw.Draw(img)
+    draw.rectangle((30, 20, 170, 130), fill=(186, 146, 98))  # tan board
+    for y in range(24, 130, 6):
+        draw.line((30, y, 170, y), fill=(160, 120, 76))  # corrugation lines
+    result = photo_classifier.classify_photo(_jpeg_bytes(img))
+    assert result["ok"] and result["method"] == "heuristic"
+    assert result["family"] == "cardboard_paper"
+    assert result["material"] == "cardboard_offcuts"
+    assert "metal_shavings" in result["material_choices"]  # owner can still correct it
+
+
+def test_photo_uses_gemini_vision_when_key_is_set(monkeypatch):
+    import json
+    import assistant
+    from config import Config
+    from PIL import Image
+
+    monkeypatch.setattr(Config, "GEMINI_API_KEY", "test-key")
+    sent = {}
+
+    def _fake_generate(body):
+        sent["body"] = body
+        return json.dumps({"family": "cardboard_paper", "material": "cardboard_offcuts",
+                           "confidence": 0.93, "qty_kg_low": 40, "qty_kg_high": 80,
+                           "description": "Stack of flattened corrugated boxes"})
+
+    monkeypatch.setattr(assistant, "gemini_generate", _fake_generate)
+    result = photo_classifier.classify_photo(_jpeg_bytes(Image.new("RGB", (64, 64), (120, 120, 120))))
+    assert result["method"] == "ai-vision"
+    assert result["family"] == "cardboard_paper" and result["material"] == "cardboard_offcuts"
+    assert (result["qty_kg_low"], result["qty_kg_high"]) == (40, 80)
+    parts = sent["body"]["contents"][0]["parts"]
+    assert parts[1]["inline_data"]["mime_type"] == "image/jpeg"
+
+
+def test_photo_falls_back_when_gemini_fails(monkeypatch):
+    import assistant
+    from config import Config
+    from PIL import Image
+
+    monkeypatch.setattr(Config, "GEMINI_API_KEY", "test-key")
+
+    def _boom(body):
+        raise RuntimeError("All Gemini models failed")
+
+    monkeypatch.setattr(assistant, "gemini_generate", _boom)
+    result = photo_classifier.classify_photo(_jpeg_bytes(Image.new("RGB", (64, 64), (150, 152, 158))))
+    assert result["ok"] and result["method"] == "heuristic"

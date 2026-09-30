@@ -70,7 +70,7 @@
 <section>
   <h2>Or upload a photo instead</h2>
   <div class="card-body">
-    <p class="muted">Not everyone finds typing a clear description easy &mdash; point a phone camera at the waste pile instead. A trained image classifier reads the photo's color/texture and guesses a material family + a rough quantity range, the same auto-fill path as the text parser above.</p>
+    <p class="muted">Not everyone finds typing a clear description easy &mdash; point a phone camera at the waste pile instead. AI vision recognises the material and gives a rough quantity range, the same auto-fill path as the text parser above. You can correct both before posting.</p>
     <form method="POST" enctype="multipart/form-data" class="simulate-form">
       <div class="simulate-field simulate-field-sm">
         <label for="photo_unit_id">Simulating as</label>
@@ -92,26 +92,39 @@
       <p class="muted simulate-result-label">Classified result:</p>
       {% if photo_tried.ok %}
       <span class="ok-badge">WASTE &middot; {{ photo_tried.family_label }} &middot; ~{{ photo_tried.qty_kg_low }}&ndash;{{ photo_tried.qty_kg_high }}kg</span>
-      <span class="status-badge status-info" title="Read by a trained image classifier (RandomForest over color/texture features) -- see photo_classifier.py for the honest scope note on synthetic training data">AI parsed (photo) &middot; {{ (photo_tried.confidence * 100)|round|int }}%</span>
-      {% if photo_tried.material_options|length > 1 %}
-      <p class="muted" style="margin-top:6px;">Best guess: <b>{{ photo_tried.material.replace('_',' ') }}</b> &mdash; other materials that can look similar in a photo: {{ photo_tried.material_options[1:]|join(', ')|replace('_',' ') }}.</p>
+      {% if photo_tried.method == 'ai-vision' %}
+      <span class="status-badge status-info" title="Recognised by Google Gemini vision">AI vision &middot; {{ (photo_tried.confidence * 100)|round|int }}%</span>
+      {% else %}
+      <span class="status-badge status-warning" title="AI vision isn't configured or was unavailable, so this is a colour-based guess -- see photo_classifier.py">Colour-based guess &middot; {{ (photo_tried.confidence * 100)|round|int }}%</span>
+      {% endif %}
+      {% if photo_tried.description %}
+      <p class="muted" style="margin-top:6px;">Seen in the photo: {{ photo_tried.description }}</p>
+      {% endif %}
+      {% if photo_tried.alternatives %}
+      <p class="muted" style="margin-top:6px;">Could also be: {{ photo_tried.alternatives|join(', ') }}.</p>
       {% endif %}
       <p class="muted">{{ photo_tried.note }}</p>
-      <p class="muted simulate-result-followup">
-        Looks right?
-        {% if photo_tried_unit %}
-        <form method="POST" action="{{ url_for('listings_quick_post') }}" style="display:inline;">
-          <input type="hidden" name="unit_id" value="{{ photo_tried_unit.id }}">
-          <input type="hidden" name="material" value="{{ photo_tried.material }}">
-          <input type="hidden" name="qty_kg" value="{{ photo_tried.qty_kg_estimate }}">
+      <div class="simulate-result-followup" style="margin-top:10px;">
+        <p class="muted" style="margin:0 0 6px;"><b>Check before posting</b> &mdash; change the material or quantity if the guess is off:</p>
+        <form method="{{ 'POST' if photo_tried_unit else 'GET' }}" action="{{ url_for('listings_quick_post') if photo_tried_unit else url_for('register_unit') }}"
+              style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;">
+          {% if photo_tried_unit %}<input type="hidden" name="unit_id" value="{{ photo_tried_unit.id }}">{% endif %}
           <input type="hidden" name="listing_type" value="waste">
-          <button type="submit" style="background:none;border:none;padding:0;color:inherit;text-decoration:underline;cursor:pointer;font:inherit;">Post it as a real listing for {{ photo_tried_unit.name }}</button>
+          <label style="display:flex;flex-direction:column;gap:3px;font-size:12px;">Material
+            <select name="material">
+              {% for m in photo_tried.material_choices %}
+              <option value="{{ m }}" {% if m == photo_tried.material %}selected{% endif %}>{{ m.replace('_', ' ') }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label style="display:flex;flex-direction:column;gap:3px;font-size:12px;">Quantity (kg)
+            <input type="number" name="qty_kg" min="1" step="1" value="{{ photo_tried.qty_kg_estimate }}" style="width:110px;">
+          </label>
+          <button type="submit" class="btn btn-sm primary">
+            Post as a listing{% if photo_tried_unit %} for {{ photo_tried_unit.name }}{% endif %}
+          </button>
         </form>
-        (posts the estimated quantity shown above -- edit it afterward from the unit's listings if the photo's guess was off)
-        {% else %}
-        <a href="{{ url_for('register_unit', material=photo_tried.material, qty_kg=photo_tried.qty_kg_estimate, listing_type='waste') }}">Post it as a real listing</a> (confirm the exact quantity there).
-        {% endif %}
-      </p>
+      </div>
       {% else %}
       <span class="followup">{{ photo_tried.reason }}</span>
       {% endif %}

@@ -206,26 +206,16 @@ def _post(model, body):
     )
 
 
-def _gemini(messages, system_text):
-    body = {
-        "system_instruction": {"parts": [{"text": system_text}]},
-        "contents": [
-            {"role": "model" if m["role"] == "assistant" else "user", "parts": [{"text": m["text"]}]}
-            for m in messages
-        ],
-        # The newer Gemini models "think" before answering and those hidden
-        # tokens count against maxOutputTokens -- with a small cap the reply
-        # was cut off mid-sentence. Low thinking keeps replies fast; the
-        # generous cap leaves room for the answer itself.
-        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 4096,
-                             "thinkingConfig": {"thinkingLevel": "low"}},
-    }
+def gemini_generate(body):
+    """POST a generateContent `body` to Gemini, falling back across models
+    (see FALLBACK_MODELS). Returns the reply text; raises RuntimeError when
+    every model fails. Shared by the chat and by photo classification."""
     models = list(dict.fromkeys([Config.GEMINI_MODEL] + FALLBACK_MODELS))
     last_error = None
     for model in models:
         try:
             resp = _post(model, body)
-            if resp.status_code == 400 and "thinking" in resp.text.lower():
+            if resp.status_code == 400 and "thinking" in resp.text.lower() and "thinkingConfig" in body.get("generationConfig", {}):
                 # A model that doesn't support thinkingLevel: ask again without it.
                 plain = dict(body, generationConfig={k: v for k, v in body["generationConfig"].items()
                                                      if k != "thinkingConfig"})
@@ -247,6 +237,23 @@ def _gemini(messages, system_text):
         if resp.status_code in _RETRYABLE:
             logger.warning("Gemini model unavailable, trying next: %s", last_error)
     raise RuntimeError(f"All Gemini models failed. Last error: {last_error}")
+
+
+def _gemini(messages, system_text):
+    body = {
+        "system_instruction": {"parts": [{"text": system_text}]},
+        "contents": [
+            {"role": "model" if m["role"] == "assistant" else "user", "parts": [{"text": m["text"]}]}
+            for m in messages
+        ],
+        # The newer Gemini models "think" before answering and those hidden
+        # tokens count against maxOutputTokens -- with a small cap the reply
+        # was cut off mid-sentence. Low thinking keeps replies fast; the
+        # generous cap leaves room for the answer itself.
+        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 4096,
+                             "thinkingConfig": {"thinkingLevel": "low"}},
+    }
+    return gemini_generate(body)
 
 
 # ------------------------------------------------------------ rule-based fallback

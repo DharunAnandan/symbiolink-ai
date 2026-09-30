@@ -43,6 +43,15 @@ def no_real_email(monkeypatch):
     monkeypatch.setattr(email_service, "available", False)
 
 
+@pytest.fixture(autouse=True)
+def no_real_gemini(monkeypatch):
+    """Never call the real Gemini API from tests: .env holds a real key with
+    a small free quota. Tests that exercise the AI path set a fake key and
+    mock requests.post themselves."""
+    from config import Config
+    monkeypatch.setattr(Config, "GEMINI_API_KEY", None)
+
+
 @pytest.fixture()
 def flask_app():
     """The Flask app configured for testing (in-memory SQLite, TESTING=True)."""
